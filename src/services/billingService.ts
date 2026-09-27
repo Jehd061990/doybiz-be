@@ -1,0 +1,497 @@
+import { Types } from 'mongoose';
+import BillingCounter from '../models/BillingCounter';
+import BillingPayment, { BillingPaymentMethod } from '../models/BillingPayment';
+import BillingRecord from '../models/BillingRecord';
+import Branch from '../models/Branch';
+import OrganizationSubscription, { PAYMENT_TERM_MONTHS, PaymentTermMonths, SubscriptionStatus } from '../models/OrganizationSubscription';
+import SubscriptionPlan from '../models/SubscriptionPlan';
+import User, { IUser } from '../models/User';
+
+const STANDARD_PLAN = {
+  name: 'DoyBiz Standard',
+  code: 'STANDARD',
+  setupFee: 5000,
+  monthlyBranchPrice: 1499,
+  includedUsersPerBranch: 3,
+  additionalUserPrice: 200,
+  currency: 'PHP',
+  billingInterval: 'MONTHLY',
+  status: 'ACTIVE',
+};
+
+const round = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const organizationId = (user: IUser) => user.organizationId;
+
+const getStandardPlan = async () => {
+  const existing = await SubscriptionPlan.findOne({ code: STANDARD_PLAN.code });
+  if (existing) {
+    if (existing.status !== 'ACTIVE') throw new Error('Active subscription plan is unavailable');
+    return existing;
+  }
+  try {
+    return await SubscriptionPlan.create(STANDARD_PLAN);
+  } catch (error: any) {
+    if (error?.code !== 11000) throw error;
+    const plan = await SubscriptionPlan.findOne({ code: STANDARD_PLAN.code, status: 'ACTIVE' });
+    if (!plan) throw new Error('Active subscription plan is unavailable');
+    return plan;
+  }
+};
+
+const getActiveBranches = async (orgId: Types.ObjectId) => Branch.find({ organizationId: orgId, status: 'ACTIVE', billingActivationPending: { $ne: true } }).select('_id name billingEffectiveAt createdAt');
+
+const countUsersForBranch = (users: IUser[], branchId: Types.ObjectId) => users.filter(user => {
+  if (user.role === 'OWNER' || user.branchAccess === 'ALL') return true;
+  return Array.isArray(user.branchAccess) && user.branchAccess.some(id => id.toString() === branchId.toString());
+}).length;
+
+type BillingPeriod = { start: Date; end: Date };
+
+const dayMilliseconds = 24 * 60 * 60 * 1000;
+
+const normalizeDate = (value: Date | string | undefined) => {
+  const date = value ? new Date(value) : new Date(0);
+  return Number.isNaN(date.getTime()) ? new Date(0) : date;
+};
+
+const billingEffectiveDate = (user: IUser) => normalizeDate(user.billingEffectiveAt || user.createdAt);
+const branchBillingEffectiveDate = (branch: { billingEffectiveAt?: Date; createdAt: Date }) => normalizeDate(branch.billingEffectiveAt || branch.createdAt);
+
+const billingDays = (period: BillingPeriod) => Math.max(1, Math.ceil((period.end.getTime() - period.start.getTime()) / dayMilliseconds));
+
+const chargedDays = (effectiveDate: Date, period: BillingPeriod) => {
+  if (effectiveDate.getTime() > period.end.getTime()) return 0;
+  return Math.max(1, Math.ceil((period.end.getTime() - Math.max(effectiveDate.getTime(), period.start.getTime())) / dayMilliseconds));
+};
+
+const startOfUtcDay = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+const prorateThroughTerm = (monthlyPrice: number, effectiveDate: Date, termEnd: Date) => {
+  let cursor = startOfUtcDay(effectiveDate);
+  const end = startOfUtcDay(termEnd);
+  let amount = 0;
+  let chargedDays = 0;
+  while (cursor <= end) {
+    const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+    const segmentEnd = monthEnd < end ? monthEnd : end;
+    const daysInMonth = monthEnd.getUTCDate();
+    const days = Math.floor((segmentEnd.getTime() - cursor.getTime()) / dayMilliseconds) + 1;
+    amount += monthlyPrice * days / daysInMonth;
+    chargedDays += days;
+    cursor = new Date(Date.UTC(segmentEnd.getUTCFullYear(), segmentEnd.getUTCMonth(), segmentEnd.getUTCDate() + 1));
+  }
+  const totalRelevantDays = effectiveDate > termEnd ? 0 : Math.max(0, Math.floor((end.getTime() - startOfUtcDay(effectiveDate).getTime()) / dayMilliseconds) + 1);
+  return { amount: round(amount), chargedDays, totalRelevantDays };
+};
+
+export const calculateEstimate = async (user: IUser, period?: BillingPeriod) => {
+  const [plan, branches, users] = await Promise.all([
+    getStandardPlan(),
+    getActiveBranches(organizationId(user)),
+    User.find({ organizationId: organizationId(user), status: 'ACTIVE', billingActivationPending: { $ne: true } }),
+  ]);
+  if (!plan) throw new Error('Active subscription plan is unavailable');
+
+  const breakdown = branches.map(branch => {
+    const activeUsers = countUsersForBranch(users, branch._id);
+    const eligibleUsers = users
+      .filter(candidate => {
+        if (candidate.role === 'OWNER' || candidate.branchAccess === 'ALL') return true;
+        return Array.isArray(candidate.branchAccess) && candidate.branchAccess.some(id => id.toString() === branch._id.toString());
+      })
+      .sort((left, right) => billingEffectiveDate(left).getTime() - billingEffectiveDate(right).getTime());
+    const additionalUsers = Math.max(activeUsers - plan.includedUsersPerBranch, 0);
+    const effectiveDate = branchBillingEffectiveDate(branch);
+    const branchDaysCharged = period ? chargedDays(effectiveDate, period) : undefined;
+    const totalDays = period ? billingDays(period) : undefined;
+    const branchCharge = period && totalDays ? round(plan.monthlyBranchPrice * (branchDaysCharged || 0) / totalDays) : plan.monthlyBranchPrice;
+    const chargeableUsers = eligibleUsers.slice(plan.includedUsersPerBranch);
+    const additionalUserDetails = chargeableUsers.map(candidate => {
+      const effectiveDate = billingEffectiveDate(candidate);
+      const daysCharged = period ? chargedDays(effectiveDate, period) : undefined;
+      const proratedAmount = period && totalDays ? round(plan.additionalUserPrice * (daysCharged || 0) / totalDays) : plan.additionalUserPrice;
+      return {
+        userId: candidate._id,
+        branchId: branch._id,
+        daysCharged,
+        totalBillingDays: totalDays,
+        monthlyUnitPrice: plan.additionalUserPrice,
+        proratedAmount,
+        effectiveDate,
+        endDate: period?.end,
+      };
+    });
+    const additionalUserCharge = round(additionalUserDetails.reduce((total, detail) => total + detail.proratedAmount, 0));
+    return {
+      branchId: branch._id,
+      branchName: branch.name,
+      activeUsers,
+      includedUsers: plan.includedUsersPerBranch,
+      additionalUsers,
+      branchCharge,
+      additionalUserCharge,
+      total: branchCharge + additionalUserCharge,
+      additionalUserDetails,
+      branchDetails: {
+        daysCharged: branchDaysCharged,
+        totalBillingDays: totalDays,
+        monthlyUnitPrice: plan.monthlyBranchPrice,
+        proratedAmount: branchCharge,
+        effectiveDate,
+        endDate: period?.end,
+        isProrated: period ? effectiveDate > period.start : false,
+      },
+    };
+  });
+  const monthlyBranchCharges = breakdown.reduce((total, item) => total + item.branchCharge, 0);
+  const additionalUserCharges = breakdown.reduce((total, item) => total + item.additionalUserCharge, 0);
+  return {
+    plan: { id: plan._id, name: plan.name, code: plan.code, currency: plan.currency, billingInterval: plan.billingInterval },
+    setupFee: plan.setupFee,
+    monthlyBranchCharges,
+    additionalUserCharges,
+    monthlyTotal: monthlyBranchCharges + additionalUserCharges,
+    currency: plan.currency,
+    breakdown,
+  };
+};
+
+const periodEnd = (start: Date, months = 1) => {
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + months);
+  end.setMilliseconds(end.getMilliseconds() - 1);
+  return end;
+};
+
+const nextInvoiceNumber = async () => {
+  const year = new Date().getUTCFullYear();
+  let counter;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      counter = await BillingCounter.findOneAndUpdate({ year }, { $inc: { sequence: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+      break;
+    } catch (error: any) {
+      if (error?.code !== 11000 || attempt === 2) throw error;
+    }
+  }
+  if (!counter) throw new Error('Unable to generate invoice number');
+  return `INV-${year}-${String(counter.sequence).padStart(6, '0')}`;
+};
+
+const setupInvoice = async (subscription: any, plan: any) => {
+  const existing = await BillingRecord.findOne({ organizationId: subscription.organizationId, billingType: 'SETUP' });
+  if (existing) return existing;
+  try {
+    return await BillingRecord.create({
+      organizationId: subscription.organizationId,
+      subscriptionId: subscription._id,
+      invoiceNumber: await nextInvoiceNumber(),
+      billingType: 'SETUP',
+      periodStart: subscription.startedAt,
+      periodEnd: subscription.startedAt,
+      subtotal: plan.setupFee,
+      setupFee: plan.setupFee,
+      branchCharges: 0,
+      additionalUserCharges: 0,
+      lineItems: [{ description: 'One-time setup fee', branchCharge: 0, additionalUserCharge: 0, amount: plan.setupFee }],
+      totalAmount: plan.setupFee,
+      currency: plan.currency,
+      status: 'PENDING',
+      dueDate: subscription.startedAt,
+    });
+  } catch (error: any) {
+    if (error?.code !== 11000) throw error;
+    const duplicate = await BillingRecord.findOne({ organizationId: subscription.organizationId, billingType: 'SETUP' });
+    if (!duplicate) throw error;
+    return duplicate;
+  }
+};
+
+export const getSubscription = async (user: IUser) => OrganizationSubscription.findOne({ organizationId: organizationId(user) }).populate('planId');
+
+export const getPlan = async () => getStandardPlan();
+
+export const activateSubscription = async (user: IUser, data: any = {}) => {
+  const plan = await getStandardPlan();
+  if (!plan) throw new Error('Active subscription plan is unavailable');
+  const paymentTermMonths = Number(data.paymentTermMonths || 1) as PaymentTermMonths;
+  if (!PAYMENT_TERM_MONTHS.includes(paymentTermMonths)) throw new Error('paymentTermMonths must be one of 1, 3, 6, or 12');
+  const existing = await OrganizationSubscription.findOne({ organizationId: organizationId(user) });
+  if (existing) {
+    const existingTerm = existing.paymentTermMonths || 1;
+    if (existingTerm !== paymentTermMonths) throw new Error('An existing subscription already has a different prepaid term');
+    if (['TRIAL', 'ACTIVE'].includes(existing.status)) return { subscription: await existing.populate('planId'), setupInvoice: await setupInvoice(existing, plan) };
+    throw new Error(`Cannot activate subscription from ${existing.status} status`);
+  }
+
+  const startedAt = new Date();
+  const subscription = await OrganizationSubscription.create({
+    organizationId: organizationId(user),
+    planId: plan._id,
+    paymentTermMonths,
+    status: 'ACTIVE',
+    startedAt,
+    currentPeriodStart: startedAt,
+    currentPeriodEnd: periodEnd(startedAt, paymentTermMonths),
+    setupFeeStatus: 'PENDING',
+    autoRenew: true,
+  });
+  try {
+    const invoice = await setupInvoice(subscription, plan);
+    return { subscription: await subscription.populate('planId'), setupInvoice: invoice };
+  } catch (error) {
+    await OrganizationSubscription.deleteOne({ _id: subscription._id, organizationId: organizationId(user) });
+    throw error;
+  }
+};
+
+export const cancelSubscription = async (user: IUser) => {
+  const subscription = await OrganizationSubscription.findOne({ organizationId: organizationId(user) });
+  if (!subscription) throw new Error('Subscription not found');
+  if (subscription.status === 'CANCELLED') return subscription;
+  subscription.status = 'CANCELLED';
+  subscription.autoRenew = false;
+  subscription.cancelledAt = new Date();
+  return subscription.save();
+};
+
+export const getSubscriptionAccess = async (orgId: Types.ObjectId) => {
+  const subscription = await OrganizationSubscription.findOne({ organizationId: orgId }).select('status currentPeriodEnd');
+  if (!subscription) return { active: false, status: null as SubscriptionStatus | null, currentPeriodEnd: null };
+  const active = ['TRIAL', 'ACTIVE'].includes(subscription.status) && subscription.currentPeriodEnd >= new Date();
+  return { active, status: subscription.status, currentPeriodEnd: subscription.currentPeriodEnd };
+};
+
+export const generateSubscriptionInvoice = async (user: IUser) => {
+  const subscription = await OrganizationSubscription.findOne({ organizationId: organizationId(user), status: { $in: ['TRIAL', 'ACTIVE'] } });
+  if (!subscription) throw new Error('An active subscription is required');
+  const existing = await BillingRecord.findOne({ organizationId: organizationId(user), billingType: 'SUBSCRIPTION', periodStart: subscription.currentPeriodStart, periodEnd: subscription.currentPeriodEnd });
+  if (existing?.status === 'PAID' || existing?.status === 'VOID') return existing;
+  const paymentTermMonths = subscription.paymentTermMonths || 1;
+  const estimate = await calculateEstimate(user);
+  const lineItems = estimate.breakdown.flatMap(item => [
+    {
+      description: item.branchName,
+      branchId: item.branchId,
+      activeUsers: item.activeUsers,
+      includedUsers: item.includedUsers,
+      additionalUsers: 0,
+      daysCharged: undefined,
+      totalBillingDays: undefined,
+      monthlyUnitPrice: item.branchDetails.monthlyUnitPrice,
+      proratedAmount: round(item.branchCharge * paymentTermMonths),
+      effectiveDate: subscription.currentPeriodStart,
+      endDate: subscription.currentPeriodEnd,
+      isProrated: false,
+      paymentTermMonths,
+      branchCharge: round(item.branchCharge * paymentTermMonths),
+      additionalUserCharge: 0,
+      amount: round(item.branchCharge * paymentTermMonths),
+    },
+    ...item.additionalUserDetails.map(detail => ({
+      description: 'Additional user charge',
+      branchId: detail.branchId,
+      userId: detail.userId,
+      daysCharged: undefined,
+      totalBillingDays: undefined,
+      monthlyUnitPrice: detail.monthlyUnitPrice,
+      proratedAmount: round(detail.proratedAmount * paymentTermMonths),
+      effectiveDate: subscription.currentPeriodStart,
+      endDate: subscription.currentPeriodEnd,
+      activeUsers: undefined,
+      includedUsers: undefined,
+      additionalUsers: 1,
+      branchCharge: 0,
+      additionalUserCharge: round(detail.proratedAmount * paymentTermMonths),
+      amount: round(detail.proratedAmount * paymentTermMonths),
+      paymentTermMonths,
+    })),
+  ]);
+  const branchCharges = round(estimate.monthlyBranchCharges * paymentTermMonths);
+  const additionalUserCharges = round(estimate.additionalUserCharges * paymentTermMonths);
+  const totalAmount = round(branchCharges + additionalUserCharges);
+  if (existing) {
+    existing.paymentTermMonths = paymentTermMonths;
+    existing.subtotal = totalAmount;
+    existing.branchCharges = branchCharges;
+    existing.additionalUserCharges = additionalUserCharges;
+    existing.totalAmount = totalAmount;
+    existing.lineItems = lineItems as any;
+    return existing.save();
+  }
+  try {
+    return await BillingRecord.create({
+      organizationId: organizationId(user),
+      subscriptionId: subscription._id,
+      invoiceNumber: await nextInvoiceNumber(),
+      billingType: 'SUBSCRIPTION',
+      paymentTermMonths,
+      periodStart: subscription.currentPeriodStart,
+      periodEnd: subscription.currentPeriodEnd,
+      subtotal: totalAmount,
+      setupFee: 0,
+      branchCharges,
+      additionalUserCharges,
+      lineItems,
+      totalAmount,
+      currency: estimate.currency,
+      status: 'PENDING',
+      dueDate: subscription.currentPeriodStart,
+    });
+  } catch (error: any) {
+    if (error?.code !== 11000) throw error;
+    const duplicate = await BillingRecord.findOne({ organizationId: organizationId(user), billingType: 'SUBSCRIPTION', periodStart: subscription.currentPeriodStart, periodEnd: subscription.currentPeriodEnd });
+    if (!duplicate) throw error;
+    return duplicate;
+  }
+};
+
+export const createMidTermAdjustment = async (user: IUser, data: any = {}) => {
+  const subscription = await OrganizationSubscription.findOne({ organizationId: organizationId(user), status: { $in: ['TRIAL', 'ACTIVE'] } });
+  if (!subscription) throw new Error('An active prepaid subscription is required');
+  const plan = await getStandardPlan();
+  const orgId = organizationId(user);
+  const existing = await BillingRecord.findOne({ organizationId: orgId, subscriptionId: subscription._id, billingType: 'ADJUSTMENT', status: 'PENDING' });
+  const branchIds = new Set<string>((data.branchIds || data.branches || []).map((id: string) => id.toString()));
+  const userEntries = new Map<string, string>();
+  for (const entry of data.users || []) userEntries.set(entry.userId.toString(), entry.branchId.toString());
+  for (const id of data.userIds || []) userEntries.set(id.toString(), data.branchId?.toString() || '');
+  for (const line of existing?.lineItems || []) {
+    if (line.targetType === 'BRANCH' && line.targetId) branchIds.add(line.targetId.toString());
+    if (line.targetType === 'USER' && line.targetId) userEntries.set(line.targetId.toString(), line.branchId?.toString() || '');
+  }
+  if (branchIds.size === 0 && userEntries.size === 0) throw new Error('At least one branch or user addition is required');
+
+  const branches = await Branch.find({ organizationId: orgId, _id: { $in: [...branchIds].map(id => new Types.ObjectId(id)) } }).select('_id name status billingEffectiveAt createdAt');
+  if (branches.length !== branchIds.size) throw new Error('One or more branches were not found in this organization');
+  const users = await User.find({ organizationId: orgId, _id: { $in: [...userEntries.keys()].map(id => new Types.ObjectId(id)) } }).select('_id name status branchAccess billingEffectiveAt createdAt');
+  if (users.length !== userEntries.size) throw new Error('One or more users were not found in this organization');
+
+  const lineItems: any[] = [];
+  for (const branch of branches) {
+    const result = prorateThroughTerm(plan.monthlyBranchPrice, branchBillingEffectiveDate(branch), subscription.currentPeriodEnd);
+    if (result.amount <= 0) throw new Error('Branch effective date must be before the subscription term end');
+    lineItems.push({
+      description: branch.name,
+      targetType: 'BRANCH',
+      targetId: branch._id,
+      branchId: branch._id,
+      daysCharged: result.chargedDays,
+      totalBillingDays: result.totalRelevantDays,
+      monthlyUnitPrice: plan.monthlyBranchPrice,
+      proratedAmount: result.amount,
+      effectiveDate: branchBillingEffectiveDate(branch),
+      endDate: subscription.currentPeriodEnd,
+      isProrated: true,
+      prorationMethod: 'CALENDAR_MONTH_DAILY',
+      branchCharge: result.amount,
+      additionalUserCharge: 0,
+      amount: result.amount,
+      paymentTermMonths: subscription.paymentTermMonths || 1,
+    });
+  }
+  for (const candidate of users) {
+    const branchId = userEntries.get(candidate._id.toString());
+    if (!branchId || !branchIds.has(branchId)) throw new Error('Each added user must specify one of the added branches');
+    const result = prorateThroughTerm(plan.additionalUserPrice, billingEffectiveDate(candidate), subscription.currentPeriodEnd);
+    if (result.amount <= 0) throw new Error('User effective date must be before the subscription term end');
+    lineItems.push({
+      description: 'Additional user charge',
+      targetType: 'USER',
+      targetId: candidate._id,
+      userId: candidate._id,
+      branchId: new Types.ObjectId(branchId),
+      daysCharged: result.chargedDays,
+      totalBillingDays: result.totalRelevantDays,
+      monthlyUnitPrice: plan.additionalUserPrice,
+      proratedAmount: result.amount,
+      effectiveDate: billingEffectiveDate(candidate),
+      endDate: subscription.currentPeriodEnd,
+      isProrated: true,
+      prorationMethod: 'CALENDAR_MONTH_DAILY',
+      branchCharge: 0,
+      additionalUserCharge: result.amount,
+      amount: result.amount,
+      paymentTermMonths: subscription.paymentTermMonths || 1,
+    });
+  }
+  await Branch.updateMany({ organizationId: orgId, _id: { $in: branches.map(branch => branch._id) } }, { $set: { status: 'INACTIVE', billingActivationPending: true } });
+  await User.updateMany({ organizationId: orgId, _id: { $in: users.map(candidate => candidate._id) } }, { $set: { status: 'INACTIVE', billingActivationPending: true } });
+  const branchCharges = round(lineItems.filter(item => item.targetType === 'BRANCH').reduce((sum, item) => sum + item.amount, 0));
+  const additionalUserCharges = round(lineItems.filter(item => item.targetType === 'USER').reduce((sum, item) => sum + item.amount, 0));
+  const totalAmount = round(branchCharges + additionalUserCharges);
+  if (existing) {
+    existing.subtotal = totalAmount;
+    existing.branchCharges = branchCharges;
+    existing.additionalUserCharges = additionalUserCharges;
+    existing.totalAmount = totalAmount;
+    existing.lineItems = lineItems;
+    existing.coverageStart = subscription.currentPeriodStart;
+    existing.coverageEnd = subscription.currentPeriodEnd;
+    return existing.save();
+  }
+  return BillingRecord.create({
+    organizationId: orgId,
+    subscriptionId: subscription._id,
+    invoiceNumber: await nextInvoiceNumber(),
+    billingType: 'ADJUSTMENT',
+    paymentTermMonths: subscription.paymentTermMonths || 1,
+    periodStart: new Date(),
+    periodEnd: subscription.currentPeriodEnd,
+    coverageStart: subscription.currentPeriodStart,
+    coverageEnd: subscription.currentPeriodEnd,
+    subtotal: totalAmount,
+    setupFee: 0,
+    branchCharges,
+    additionalUserCharges,
+    lineItems,
+    totalAmount,
+    currency: plan.currency,
+    status: 'PENDING',
+    dueDate: new Date(),
+  });
+};
+
+export const getBillingRecords = async (user: IUser) => BillingRecord.find({ organizationId: organizationId(user) }).sort({ createdAt: -1 });
+
+export const getBillingRecord = async (id: string, user: IUser) => {
+  if (!Types.ObjectId.isValid(id)) throw new Error('Invalid billing record ID format');
+  const record = await BillingRecord.findOne({ _id: new Types.ObjectId(id), organizationId: organizationId(user) }).populate('subscriptionId');
+  if (!record) throw new Error('Billing record not found');
+  const payments = await BillingPayment.find({ organizationId: organizationId(user), billingRecordId: record._id, status: 'COMPLETED' }).sort({ paidAt: 1 });
+  const paidAmount = round(payments.reduce((total, payment) => total + payment.amount, 0));
+  return { record, payments, paidAmount, outstandingAmount: round(record.totalAmount - paidAmount) };
+};
+
+export const recordBillingPayment = async (id: string, data: any, user: IUser) => {
+  const details = await getBillingRecord(id, user);
+  const idempotencyKey = typeof data.idempotencyKey === 'string' ? data.idempotencyKey.trim() : '';
+  if (!idempotencyKey) throw new Error('idempotencyKey is required for billing payments');
+  const previousPayment = await BillingPayment.findOne({ organizationId: organizationId(user), billingRecordId: details.record._id, idempotencyKey });
+  if (previousPayment) return { payment: previousPayment, record: details.record, paidAmount: details.paidAmount, outstandingAmount: details.outstandingAmount };
+  if (details.record.status === 'PAID' || details.record.status === 'VOID') throw new Error('This billing record cannot accept payments');
+  const amount = round(Number(data.amount));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Payment amount must be greater than 0');
+  if (amount > details.outstandingAmount) throw new Error(`Payment exceeds outstanding balance of ${details.outstandingAmount.toFixed(2)}`);
+  const paymentMethod = data.paymentMethod as BillingPaymentMethod;
+  if (!['CASH', 'GCASH', 'BANK_TRANSFER', 'CARD', 'OTHER'].includes(paymentMethod)) throw new Error('Invalid billing payment method');
+  const payment = await BillingPayment.create({ organizationId: organizationId(user), billingRecordId: details.record._id, amount, paymentMethod, referenceNumber: data.referenceNumber, idempotencyKey, status: 'COMPLETED', paidAt: data.paidAt ? new Date(data.paidAt) : new Date(), receivedBy: user._id });
+  const paidAmount = round(details.paidAmount + amount);
+  const status = paidAmount >= details.record.totalAmount ? 'PAID' : details.record.status;
+  const record = await BillingRecord.findOneAndUpdate({ _id: details.record._id, organizationId: organizationId(user), status: { $in: ['PENDING', 'OVERDUE'] } }, { $set: { status, ...(status === 'PAID' ? { paidAt: new Date() } : {}) } }, { new: true });
+  if (!record) {
+    await BillingPayment.deleteOne({ _id: payment._id, organizationId: organizationId(user), status: 'COMPLETED' });
+    throw new Error('Billing record changed while recording payment; please retry');
+  }
+  if (record.billingType === 'SETUP' && status === 'PAID') await OrganizationSubscription.updateOne({ _id: record.subscriptionId, organizationId: organizationId(user) }, { $set: { setupFeeStatus: 'PAID', setupFeePaidAt: new Date() } });
+  if (record.billingType === 'ADJUSTMENT' && status === 'PAID') {
+    const branchIds = record.lineItems.filter(item => item.targetType === 'BRANCH' && item.targetId).map(item => item.targetId);
+    const userIds = record.lineItems.filter(item => item.targetType === 'USER' && item.targetId).map(item => item.targetId);
+    if (branchIds.length > 0) await Branch.updateMany({ organizationId: organizationId(user), _id: { $in: branchIds } }, { $set: { status: 'ACTIVE', billingActivationPending: false } });
+    if (userIds.length > 0) await User.updateMany({ organizationId: organizationId(user), _id: { $in: userIds } }, { $set: { status: 'ACTIVE', billingActivationPending: false } });
+  }
+  return { payment, record, paidAmount, outstandingAmount: round(record.totalAmount - paidAmount) };
+};
+
+export const getBillingPayments = async (id: string, user: IUser) => (await getBillingRecord(id, user)).payments;

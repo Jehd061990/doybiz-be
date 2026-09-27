@@ -1,0 +1,133 @@
+# ================================
+
+# Dependencies
+
+# ================================
+
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+
+# ================================
+
+# Environment / Secrets
+
+# ================================
+
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Keep example environment files
+
+!.env.example
+
+# ================================
+
+# Logs
+
+# ================================
+
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ================================
+
+# Build / Compiled Output
+
+# ================================
+
+dist/
+build/
+out/
+coverage/
+.nyc_output/
+
+# TypeScript
+
+*.tsbuildinfo
+
+# ================================
+
+# Runtime / Temporary Files
+
+# ================================
+
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ================================
+
+# OS Generated Files
+
+# ================================
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ================================
+
+# IDE / Editors
+
+# ================================
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+.idea/
+*.iml
+
+# ================================
+
+# Local Development Databases
+
+# ================================
+
+*.sqlite
+*.sqlite3
+*.db
+
+# ================================
+
+# Test / Cache Files
+
+# ================================
+
+.eslintcache
+.cache/
+.parcel-cache/
+.turbo/
+
+# ================================
+
+# Generated Documentation / Reports
+
+# ================================
+
+*.generated.*
+*.report.*
+
+# ================================
+
+# OS / Editor Backup Files
+
+# ================================
+
+*~
+*.swp
+*.swo
+*.bak
+*.orig

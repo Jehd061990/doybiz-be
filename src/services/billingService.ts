@@ -6,6 +6,7 @@ import Branch from '../models/Branch';
 import OrganizationSubscription, { PAYMENT_TERM_MONTHS, PaymentTermMonths, SubscriptionStatus } from '../models/OrganizationSubscription';
 import SubscriptionPlan from '../models/SubscriptionPlan';
 import User, { IUser } from '../models/User';
+import { XenditService } from './xenditService';
 
 const STANDARD_PLAN = {
   name: 'DoyBiz Standard',
@@ -495,3 +496,168 @@ export const recordBillingPayment = async (id: string, data: any, user: IUser) =
 };
 
 export const getBillingPayments = async (id: string, user: IUser) => (await getBillingRecord(id, user)).payments;
+
+export const reconcileXenditWebhook = async (payload: any, headers: Record<string, any> = {}) => {
+  const xendit = new XenditService(process.env.XENDIT_SECRET_KEY, process.env.XENDIT_BASE_URL, process.env.XENDIT_WEBHOOK_TOKEN);
+  xendit.verifyWebhookToken(headers);
+
+  const eventName = String(payload?.event || '').trim();
+  const eventStatus = String(payload?.data?.status || payload?.status || '').trim().toUpperCase();
+  if (!['payment_request.succeeded', 'payment_request.failed'].includes(eventName) && eventStatus !== 'SUCCEEDED' && eventStatus !== 'FAILED') {
+    throw new Error('Unsupported Xendit webhook event');
+  }
+
+  if (eventName === 'payment_request.failed' || eventStatus === 'FAILED') {
+    throw new Error('Xendit payment failure is not a successful reconciliation event');
+  }
+
+  const providerId = String(payload?.data?.id || '').trim();
+  const referenceId = String(payload?.data?.reference_id || payload?.data?.referenceId || '').trim();
+  const amount = Number(payload?.data?.amount ?? payload?.amount ?? 0);
+  const currency = String(payload?.data?.currency || payload?.currency || '').trim().toUpperCase();
+  const metadata = payload?.data?.metadata || payload?.metadata || {};
+  const billingRecordId = metadata.billingRecordId || (referenceId.startsWith('BILLING-') ? referenceId.replace(/^BILLING-/, '') : null);
+
+  if (!providerId) throw new Error('Xendit webhook payload is missing the payment request ID');
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Webhook amount is invalid');
+  if (!billingRecordId) throw new Error('Webhook metadata is missing the billingRecordId');
+
+  const payment = await BillingPayment.findOne({ providerName: 'XENDIT', providerPaymentRequestId: providerId }).sort({ createdAt: -1 });
+  if (!payment) throw new Error('No matching billing payment was found for this Xendit payment request');
+
+  const record = await BillingRecord.findOne({ _id: new Types.ObjectId(billingRecordId), organizationId: payment.organizationId });
+  if (!record) throw new Error('Billing record for Xendit webhook payment could not be found');
+
+  if (payment.status === 'COMPLETED') {
+    return { payment, record, paidAmount: payment.amount, outstandingAmount: round(Math.max(record.totalAmount - payment.amount, 0)) };
+  }
+
+  if (payment.amount !== round(amount)) {
+    throw new Error('Webhook amount does not match the internal billing record amount');
+  }
+  if (record.currency && currency && record.currency !== currency) {
+    throw new Error('Webhook currency does not match the billing record currency');
+  }
+  if (record.totalAmount !== round(payment.amount)) {
+    throw new Error('Webhook amount does not match the outstanding billing total');
+  }
+
+  const paymentUpdate = await BillingPayment.findOneAndUpdate(
+    { _id: payment._id, organizationId: payment.organizationId, status: { $ne: 'COMPLETED' } },
+    {
+      $set: {
+        status: 'COMPLETED',
+        providerStatus: eventStatus || payment.providerStatus,
+        providerReferenceId: referenceId || payment.providerReferenceId,
+        providerData: payload.data || payment.providerData,
+        paidAt: new Date(),
+      },
+    },
+    { new: true }
+  );
+
+  if (!paymentUpdate) {
+    throw new Error('Billing payment has already been reconciled');
+  }
+
+  const updatedRecord = await BillingRecord.findOneAndUpdate(
+    { _id: record._id, organizationId: payment.organizationId, status: { $in: ['PENDING', 'OVERDUE'] } },
+    { $set: { status: 'PAID', paidAt: new Date() } },
+    { new: true }
+  );
+
+  if (!updatedRecord) {
+    await BillingPayment.updateOne({ _id: payment._id }, { $set: { status: payment.status } });
+    throw new Error('Billing record changed while reconciling payment; please retry');
+  }
+
+  if (updatedRecord.billingType === 'SETUP') {
+    await OrganizationSubscription.updateOne({ _id: updatedRecord.subscriptionId, organizationId: payment.organizationId }, { $set: { setupFeeStatus: 'PAID', setupFeePaidAt: new Date() } });
+  }
+  if (updatedRecord.billingType === 'ADJUSTMENT') {
+    const branchIds = updatedRecord.lineItems.filter(item => item.targetType === 'BRANCH' && item.targetId).map(item => item.targetId);
+    const userIds = updatedRecord.lineItems.filter(item => item.targetType === 'USER' && item.targetId).map(item => item.targetId);
+    if (branchIds.length > 0) await Branch.updateMany({ organizationId: payment.organizationId, _id: { $in: branchIds } }, { $set: { status: 'ACTIVE', billingActivationPending: false } });
+    if (userIds.length > 0) await User.updateMany({ organizationId: payment.organizationId, _id: { $in: userIds } }, { $set: { status: 'ACTIVE', billingActivationPending: false } });
+  }
+
+  return { payment: paymentUpdate, record: updatedRecord, paidAmount: paymentUpdate.amount, outstandingAmount: round(Math.max(updatedRecord.totalAmount - paymentUpdate.amount, 0)) };
+};
+
+export const createXenditPaymentRequest = async (id: string, user: IUser, data: any = {}) => {
+  const record = await BillingRecord.findOne({ _id: new Types.ObjectId(id), organizationId: organizationId(user) });
+  if (!record) throw new Error('Billing record not found');
+  if (record.status === 'PAID' || record.status === 'VOID') throw new Error('This billing record cannot accept payment requests');
+
+  const existingPayment = await BillingPayment.findOne({
+    organizationId: organizationId(user),
+    billingRecordId: record._id,
+    providerName: 'XENDIT',
+    status: 'PENDING',
+  }).sort({ createdAt: -1 });
+
+  if (existingPayment) {
+    return {
+      record,
+      payment: existingPayment,
+      xenditPayment: {
+        id: existingPayment.providerPaymentRequestId,
+        status: existingPayment.providerStatus,
+        reference_id: existingPayment.providerReferenceId,
+        amount: existingPayment.amount,
+        currency: record.currency,
+        actions: existingPayment.providerData?.actions || [],
+      },
+    };
+  }
+
+  const xendit = new XenditService(process.env.XENDIT_SECRET_KEY, process.env.XENDIT_BASE_URL);
+  if (!xendit.isConfigured()) throw new Error('XENDIT_SECRET_KEY is not configured');
+
+  const amount = round(Number(record.totalAmount));
+  const referenceId = `BILLING-${record._id.toString()}`;
+  const providerInput = {
+    amount,
+    currency: record.currency || 'PHP',
+    country: 'PH',
+    referenceId,
+    description: record.billingType === 'ADJUSTMENT' ? 'Mid-term billing adjustment' : 'Prepaid subscription billing',
+    metadata: {
+      organizationId: organizationId(user).toString(),
+      billingRecordId: record._id.toString(),
+      billingType: record.billingType,
+    },
+    ...(data.paymentMethod ? { paymentMethod: data.paymentMethod } : {}),
+  };
+
+  const providerResponse = await xendit.createPaymentRequest(providerInput);
+  const payment = await BillingPayment.create({
+    organizationId: organizationId(user),
+    billingRecordId: record._id,
+    amount,
+    paymentMethod: 'OTHER',
+    referenceNumber: providerResponse.reference_id || referenceId,
+    idempotencyKey: `xendit-${record._id.toString()}-${providerResponse.id}`,
+    status: 'PENDING',
+    providerName: 'XENDIT',
+    providerPaymentRequestId: providerResponse.id,
+    providerReferenceId: providerResponse.reference_id || referenceId,
+    providerStatus: providerResponse.status,
+    providerData: providerResponse,
+    paidAt: new Date(),
+    receivedBy: user._id,
+  });
+
+  return {
+    record,
+    payment,
+    xenditPayment: {
+      id: providerResponse.id,
+      status: providerResponse.status,
+      reference_id: providerResponse.reference_id || referenceId,
+      amount,
+      currency: record.currency || 'PHP',
+      actions: providerResponse.actions || [],
+    },
+  };
+};

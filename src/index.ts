@@ -18,6 +18,7 @@ import billingRoutes from './routes/billingRoutes';
 dotenv.config();
 
 const app = express();
+app.use('/api/billing/xendit/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);

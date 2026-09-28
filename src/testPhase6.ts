@@ -12,6 +12,7 @@ import OrganizationSubscription from './models/OrganizationSubscription';
 import BillingRecord from './models/BillingRecord';
 import BillingPayment from './models/BillingPayment';
 import BillingCounter from './models/BillingCounter';
+import { XenditService } from './services/xenditService';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ const roleAllowed = (roles: string[], role: string) => {
 
 async function runTests() {
   await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test');
+  await BillingPayment.collection.dropIndexes();
   await Promise.all([
     BillingPayment.deleteMany({}), BillingRecord.deleteMany({}), OrganizationSubscription.deleteMany({}), BillingCounter.deleteMany({}),
     SubscriptionPlan.deleteMany({}), User.deleteMany({}), Branch.deleteMany({}), Organization.deleteMany({}),
@@ -35,6 +37,81 @@ async function runTests() {
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'MANAGER').nextCalled, true);
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'CASHIER').statusCode, 403);
   assert.equal(roleAllowed(['OWNER'], 'MANAGER').statusCode, 403);
+
+  const previousXenditKey = process.env.XENDIT_SECRET_KEY;
+  const originalCreatePaymentRequest = (XenditService.prototype as any).createPaymentRequest;
+  (XenditService.prototype as any).createPaymentRequest = async function (input: any) {
+    return {
+      id: 'xendit_request_123',
+      status: 'ACCEPTING_PAYMENTS',
+      reference_id: input.referenceId,
+      actions: [{ name: 'checkout', url: 'https://example.com/checkout' }],
+      metadata: input.metadata,
+    };
+  };
+  process.env.XENDIT_SECRET_KEY = 'test_secret_key';
+
+  const xenditOrg = await registerOrganization({ orgName: 'Xendit Org', slug: `xendit-${suffix}`, email: `xendit-${suffix}@example.com`, phone: '09500000099', address: 'X', userName: 'Xendit Owner', password: 'password123' });
+  const xenditBranch = await Branch.create({ organizationId: xenditOrg.org._id, name: 'Xendit Branch', address: 'X', contactNumber: '09500000098', status: 'ACTIVE' });
+  const xenditSubscription = await billingService.activateSubscription(xenditOrg.user, { paymentTermMonths: 3 });
+  const xenditInvoice = await billingService.generateSubscriptionInvoice(xenditOrg.user);
+  const xenditRequest = await billingService.createXenditPaymentRequest(xenditInvoice._id.toString(), xenditOrg.user, { amount: 1, paymentMethod: 'BANK_TRANSFER' });
+  assert.equal(xenditRequest.record.totalAmount, xenditInvoice.totalAmount);
+  assert.equal(xenditRequest.xenditPayment.amount, xenditInvoice.totalAmount);
+  assert.equal(xenditRequest.payment.status, 'PENDING');
+  assert.equal(xenditRequest.record.status, 'PENDING');
+  assert.ok((xenditRequest.xenditPayment.id || '').includes('xendit'));
+  assert.equal(xenditRequest.xenditPayment.currency, 'PHP');
+  assert.equal(xenditRequest.xenditPayment.reference_id, `BILLING-${xenditInvoice._id.toString()}`);
+  assert.equal((await billingService.getBillingRecord(xenditInvoice._id.toString(), xenditOrg.user)).outstandingAmount, xenditInvoice.totalAmount);
+
+  const previousWebhookToken = process.env.XENDIT_WEBHOOK_TOKEN;
+  process.env.XENDIT_WEBHOOK_TOKEN = 'test_webhook_secret';
+  await assert.rejects(async () => billingService.reconcileXenditWebhook({
+    event: 'payment_request.succeeded',
+    data: {
+      id: xenditRequest.xenditPayment.id,
+      status: 'SUCCEEDED',
+      amount: 1,
+      currency: 'PHP',
+      reference_id: `BILLING-${xenditInvoice._id.toString()}`,
+      metadata: { organizationId: xenditOrg.org._id.toString(), billingRecordId: xenditInvoice._id.toString(), billingType: 'SUBSCRIPTION' },
+    },
+  }, { 'x-callback-token': 'test_webhook_secret' }), /amount/i);
+  await assert.rejects(async () => billingService.reconcileXenditWebhook({ event: 'payment_request.succeeded', data: { id: xenditRequest.xenditPayment.id, status: 'SUCCEEDED', amount: xenditInvoice.totalAmount, currency: 'PHP', metadata: { billingRecordId: xenditInvoice._id.toString() } } }, { 'x-callback-token': 'wrong_token' }), /x-callback-token/i);
+  const successfulWebhook = await billingService.reconcileXenditWebhook({
+    event: 'payment_request.succeeded',
+    data: {
+      id: xenditRequest.xenditPayment.id,
+      status: 'SUCCEEDED',
+      amount: xenditInvoice.totalAmount,
+      currency: 'PHP',
+      reference_id: `BILLING-${xenditInvoice._id.toString()}`,
+      metadata: { organizationId: xenditOrg.org._id.toString(), billingRecordId: xenditInvoice._id.toString(), billingType: 'SUBSCRIPTION' },
+    },
+  }, { 'x-callback-token': 'test_webhook_secret' });
+  assert.equal(successfulWebhook.payment.status, 'COMPLETED');
+  assert.equal(successfulWebhook.record.status, 'PAID');
+  const replayWebhook = await billingService.reconcileXenditWebhook({
+    event: 'payment_request.succeeded',
+    data: {
+      id: xenditRequest.xenditPayment.id,
+      status: 'SUCCEEDED',
+      amount: xenditInvoice.totalAmount,
+      currency: 'PHP',
+      reference_id: `BILLING-${xenditInvoice._id.toString()}`,
+      metadata: { organizationId: xenditOrg.org._id.toString(), billingRecordId: xenditInvoice._id.toString(), billingType: 'SUBSCRIPTION' },
+    },
+  }, { 'x-callback-token': 'test_webhook_secret' });
+  assert.equal(replayWebhook.payment._id.toString(), successfulWebhook.payment._id.toString());
+  process.env.XENDIT_WEBHOOK_TOKEN = previousWebhookToken;
+
+  (XenditService.prototype as any).createPaymentRequest = originalCreatePaymentRequest;
+  process.env.XENDIT_SECRET_KEY = '';
+  const missingSecretService = new XenditService('', process.env.XENDIT_BASE_URL);
+  await assert.rejects(async () => missingSecretService.createPaymentRequest({ amount: 100, currency: 'PHP', country: 'PH', referenceId: 'test' }), /XENDIT_SECRET_KEY/);
+  process.env.XENDIT_SECRET_KEY = previousXenditKey;
+
   const first = await registerOrganization({ orgName: 'Billing Org One', slug: `billing-one-${suffix}`, email: `billing-one-${suffix}@example.com`, phone: '09500000001', address: 'A', userName: 'Owner One', password: 'password123' });
   const second = await registerOrganization({ orgName: 'Billing Org Two', slug: `billing-two-${suffix}`, email: `billing-two-${suffix}@example.com`, phone: '09500000002', address: 'B', userName: 'Owner Two', password: 'password123' });
   for (const months of [1, 3, 6, 12] as const) {

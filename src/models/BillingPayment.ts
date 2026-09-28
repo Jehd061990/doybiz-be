@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type BillingPaymentMethod = 'CASH' | 'GCASH' | 'BANK_TRANSFER' | 'CARD' | 'OTHER';
-export type BillingPaymentStatus = 'COMPLETED' | 'VOIDED' | 'REFUNDED';
+export type BillingPaymentStatus = 'PENDING' | 'COMPLETED' | 'VOIDED' | 'REFUNDED';
 
 export interface IBillingPayment extends Document {
   organizationId: Types.ObjectId;
@@ -11,8 +11,13 @@ export interface IBillingPayment extends Document {
   referenceNumber?: string;
   idempotencyKey: string;
   status: BillingPaymentStatus;
+  providerName?: 'XENDIT';
+  providerPaymentRequestId?: string;
+  providerReferenceId?: string;
+  providerStatus?: string;
+  providerData?: Record<string, any>;
   paidAt: Date;
-  receivedBy: Types.ObjectId;
+  receivedBy?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,9 +29,14 @@ const BillingPaymentSchema: Schema = new Schema({
   paymentMethod: { type: String, enum: ['CASH', 'GCASH', 'BANK_TRANSFER', 'CARD', 'OTHER'], required: true },
   referenceNumber: { type: String, trim: true },
   idempotencyKey: { type: String, required: true, trim: true },
-  status: { type: String, enum: ['COMPLETED', 'VOIDED', 'REFUNDED'], required: true, default: 'COMPLETED', index: true },
+  status: { type: String, enum: ['PENDING', 'COMPLETED', 'VOIDED', 'REFUNDED'], required: true, default: 'PENDING', index: true },
+  providerName: { type: String, enum: ['XENDIT'], index: true },
+  providerPaymentRequestId: { type: String, trim: true, index: true },
+  providerReferenceId: { type: String, trim: true },
+  providerStatus: { type: String, trim: true },
+  providerData: { type: Schema.Types.Mixed },
   paidAt: { type: Date, required: true, default: Date.now, index: true },
-  receivedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  receivedBy: { type: Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
 BillingPaymentSchema.index({ organizationId: 1, billingRecordId: 1, paidAt: -1 });

@@ -38,16 +38,24 @@ export const registerOrganization = async (data: any) => {
 
 export const login = async (data: any) => {
   const { email, password, organizationId } = data;
-  if (!email || !password) {
+  const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
+  if (!normalizedEmail || !password) {
     throw new Error('Email and password are required');
   }
 
-  const query: any = { email: email.toLowerCase().trim() };
+  const query: any = { email: normalizedEmail };
+  let user;
   if (organizationId) {
     query.organizationId = organizationId;
+    user = await User.findOne(query);
+  } else {
+    const matchingUsers = await User.find(query).limit(2);
+    if (matchingUsers.length > 1) {
+      throw new Error('organizationId is required when email is associated with multiple organizations');
+    }
+    user = matchingUsers[0] || null;
   }
 
-  const user = await User.findOne(query);
   if (!user || user.status !== 'ACTIVE') {
     throw new Error('Invalid credentials or inactive account');
   }

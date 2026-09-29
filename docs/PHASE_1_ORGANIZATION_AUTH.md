@@ -10,15 +10,15 @@ The development plan describes Phase 1 as Organization + Branch + User + Authent
 
 - Organization registration together with the first `OWNER` user.
 - Organization and user persistence in MongoDB through Mongoose.
-- Login using organization-scoped email lookup and bcrypt password comparison.
+- Login using normalized email, an optional organization ID when the email is unique, and bcrypt password comparison. Duplicate emails across organizations require an organization ID.
 - JWT creation during registration and login.
 - Bearer-token authentication middleware.
 - Role authorization for `OWNER`, `MANAGER`, and `CASHIER`.
 - Branch creation by owners.
 - Organization-scoped branch listing for authenticated users.
-- Organization status and user status checks during authentication.
+- Active-user checks during login and authenticated requests. Organization status is not currently checked by login or bearer authentication.
 
-Not confirmed from the current implementation: a standalone user-management API, profile endpoint, password reset flow, refresh tokens, invitation flow, or a dedicated Phase 1 test file.
+Not implemented: a profile endpoint, password reset flow, refresh tokens, invitation flow, or a dedicated Phase 1 test file. Owner-only user management is implemented in a later phase.
 
 ## 3. Architecture / Components
 
@@ -59,7 +59,7 @@ Not confirmed from the current implementation: a standalone user-management API,
 - Authorization: none.
 - Body fields used: `orgName`, `email`, `phone`, `address`, `userName`, `password`, optional `slug`.
 - Behavior: creates an Organization, hashes the password with bcrypt, creates an `OWNER` with `branchAccess: 'ALL'`, and signs a seven-day JWT.
-- Success: HTTP 201 with `success`, organization, user, and token values returned from the auth service.
+- Success: HTTP 201 with `success`, a whitelisted organization, a public user object, and token. The user response includes identity, organization, role, branch/module permissions, preset, status, and timestamps; it excludes credentials.
 - Errors: HTTP 400 with `success: false` and an error message.
 - Validation: the controller itself does not perform detailed field validation; Mongoose required/unique constraints and service behavior apply.
 
@@ -68,8 +68,8 @@ Not confirmed from the current implementation: a standalone user-management API,
 - Authentication: none.
 - Authorization: none.
 - Body fields used: `email`, `password`, optional `organizationId`.
-- Behavior: finds the user by normalized email, optionally organization ID, requires an active user, compares the password with bcrypt, and signs a seven-day JWT.
-- Success: HTTP 200 with `success`, user, and token.
+- Behavior: finds the user by normalized email and optional organization ID, requires an active user, compares the password with bcrypt, and signs a seven-day JWT. If `organizationId` is omitted and the email matches multiple organization accounts, login rejects the request and requires `organizationId` rather than selecting an arbitrary account.
+- Success: HTTP 200 with `success`, a whitelisted public user object, and token.
 - Errors: HTTP 400 for missing credentials, invalid credentials, or inactive accounts.
 
 ### `GET /api/branches`
@@ -77,7 +77,7 @@ Not confirmed from the current implementation: a standalone user-management API,
 - Authentication: required.
 - Roles: `OWNER`, `MANAGER`, `CASHIER`.
 - Query/body/params: none.
-- Behavior: returns branches whose `organizationId` equals the authenticated user's organization ID.
+- Behavior: returns only branches in the authenticated user's organization that the user may access. Owners see all organization branches; other users see their assigned branches.
 - Success: returns the branch array directly, without the standard `success` wrapper used by most later controllers.
 - Errors: HTTP 500 with `Failed to fetch branches`.
 
@@ -90,7 +90,7 @@ Not confirmed from the current implementation: a standalone user-management API,
 - Errors: HTTP 400 with an error message.
 - Persistence validation: Branch schema required fields are `name`, `address`, and `contactNumber`; status defaults to `ACTIVE`.
 
-The development plan lists `GET /api/users/me` as an existing route. No user route, user controller, or `/api/users` registration was found in `src/`.
+The development plan lists `GET /api/users/me`, but the current user surface is owner-only `GET/POST /api/users`, `GET /api/users/:id`, and `PATCH /api/users/:id`. No `/api/users/me` route is registered.
 
 ## 5. Data Models
 
@@ -114,13 +114,14 @@ Indexes: organization ID index. No unique branch-name constraint is defined.
 
 - Registration creates exactly one initial owner for the new organization.
 - The initial owner has access to all branches through `branchAccess: 'ALL'`.
-- Login requires an active user; inactive users cannot authenticate.
+- Login requires an active user; inactive users cannot authenticate. If the normalized email is associated with multiple organization accounts, `organizationId` must be supplied.
 - An authenticated user's organization is taken from the persisted User document loaded from the JWT user ID.
 - Owners can create branches. Managers and cashiers can list branches.
+- Authentication does not currently reject users whose Organization document has `status: 'INACTIVE'`; there is no organization suspension workflow in this backend.
 - The implementation does not automatically create a branch during organization registration.
 - The implementation does not expose subscription enforcement or billing checks at this phase.
 
-The plan states that at least one active owner must always remain and that the last owner cannot be deleted, deactivated, or demoted. No user-management mutation endpoints or corresponding owner-protection implementation were found, so this rule is not confirmed as enforced by the current code.
+The last active owner cannot be demoted or deactivated through the owner-only user update API. User lookups and branch/module assignments are validated against the authenticated owner's organization.
 
 ## 7. Security / Authorization
 
@@ -129,10 +130,10 @@ The plan states that at least one active owner must always remain and that the l
 - Authentication reloads the user by JWT `userId` and checks `status === 'ACTIVE'`.
 - Role checks are explicit per route.
 - Branch listing and branch creation use the authenticated user's organization ID rather than a client-supplied organization ID.
-- The login query accepts an optional organization ID from the login body to disambiguate users; it is not used to grant access after authentication.
+- The login query accepts an optional organization ID from the login body. It selects the account but does not grant access outside that user's persisted organization.
 - There is no separate tenant-resolver middleware on authenticated Phase 1 routes; tenant identity is derived from the authenticated User document.
 
-Potential exposure: the registration and login controllers return the User document supplied by the auth service, and the User schema has no serialization transform. The current response may therefore include the persisted `passwordHash` field. This documentation does not reproduce its value; the behavior is recorded as an existing security limitation.
+Registration and login controllers explicitly whitelist public user and organization fields. `password` and `passwordHash` are not included in either auth response. The User schema itself does not globally hide `passwordHash`, so any future controller returning a raw User document must apply an explicit safe projection or DTO.
 
 ## 8. Database / Persistence
 
@@ -143,7 +144,7 @@ Relevant indexes are the organization/email uniqueness index on User and organiz
 ## 9. Testing
 
 - No `src/testPhase1.ts` or dedicated Phase 1 test file was found.
-- `src/testPhase2.ts` exercises Phase 1 registration as its first scenario and then creates a branch for the registered organization.
+- `src/testPhase2.ts` exercises Phase 1 registration and login as part of its scenarios. `src/testPhase6.ts` asserts auth response sanitization and duplicate-email login behavior.
 - Existing command: `npx ts-node src/testPhase2.ts`. There is no `test:phase2` npm script in `package.json`.
 - The inspected Phase 2 test connected to MongoDB, registered an organization and owner, and passed the Phase 1 setup portion.
 - `npm run build` was run after documentation creation and passed.
@@ -179,14 +180,12 @@ Phase 1 supplies `req.user`, organization IDs, roles, and branch access data use
 ## 12. Known Limitations
 
 - No dedicated Phase 1 test file or npm test script.
-- No user-management endpoints were found.
 - No `/api/users/me` endpoint was found despite being listed in the development plan.
-- Last-active-owner protection is not confirmed in the current implementation.
 - Registration is not transactional across Organization and User creation.
 - Branch creation has minimal service-level validation and does not explicitly validate branch status or owner access beyond route role authorization.
-- The auth response may serialize `passwordHash` because no User transform is defined.
+- Login requires `organizationId` when the normalized email is associated with users in multiple organizations.
 - No refresh-token, password-reset, invitation, email-verification, or subscription-enforcement workflow is implemented here.
 
 ## 13. Phase Status
 
-PARTIALLY COMPLETE. The organization, branch, user, JWT authentication, and role middleware foundation is implemented and used by later phases. The planned user profile/management surface and confirmed last-owner protection are absent or unconfirmed.
+PARTIALLY COMPLETE. The organization, branch, user, JWT authentication, and role middleware foundation is implemented and used by later phases. Owner user management is available, but no `/api/users/me` profile endpoint, refresh-token, password-reset, invitation, or email-verification workflow is implemented.

@@ -1,9 +1,10 @@
 import assert from 'assert';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { registerOrganization } from './services/authService';
+import { login, registerOrganization } from './services/authService';
 import * as billingService from './services/billingService';
 import { authorizeRole } from './middlewares/auth';
+import * as authController from './controllers/authController';
 import Organization from './models/Organization';
 import User from './models/User';
 import Branch from './models/Branch';
@@ -27,6 +28,17 @@ const roleAllowed = (roles: string[], role: string) => {
   return { nextCalled, statusCode };
 };
 
+const captureResponse = async (handler: any, body: any) => {
+  let statusCode = 0;
+  let responseBody: any;
+  const response: any = {
+    status(code: number) { statusCode = code; return this; },
+    json(value: any) { responseBody = value; return this; },
+  };
+  await handler({ body } as any, response);
+  return { statusCode, body: responseBody };
+};
+
 async function runTests() {
   await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test');
   await BillingPayment.collection.dropIndexes();
@@ -36,6 +48,26 @@ async function runTests() {
   ]);
 
   const suffix = Date.now();
+  const authCredentials = { email: `auth-contract-${suffix}@example.com`, password: 'password123' };
+  const authRegistration = await captureResponse(authController.register, {
+    orgName: 'Auth Contract Org', slug: `auth-contract-${suffix}`, ...authCredentials,
+    phone: '09500000901', address: 'Auth', userName: 'Auth Contract Owner',
+  });
+  assert.equal(authRegistration.statusCode, 201);
+  assert.equal(authRegistration.body.success, true);
+  assert.equal(authRegistration.body.user.email, authCredentials.email);
+  assert.equal(Object.prototype.hasOwnProperty.call(authRegistration.body.user, 'password'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(authRegistration.body.user, 'passwordHash'), false);
+  assert.deepEqual(Object.keys(authRegistration.body.user).sort(), [
+    '_id', 'organizationId', 'name', 'email', 'role', 'branchAccess', 'modulePermissions', 'permissionPreset', 'status', 'createdAt', 'updatedAt',
+  ].sort());
+  assert.equal(Object.prototype.hasOwnProperty.call(authRegistration.body.org, 'passwordHash'), false);
+  const authLogin = await captureResponse(authController.login, authCredentials);
+  assert.equal(authLogin.statusCode, 200);
+  assert.equal(authLogin.body.user.organizationId, authRegistration.body.user.organizationId);
+  assert.equal(Object.prototype.hasOwnProperty.call(authLogin.body.user, 'password'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(authLogin.body.user, 'passwordHash'), false);
+
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'OWNER').nextCalled, true);
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'MANAGER').nextCalled, true);
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'CASHIER').statusCode, 403);
@@ -460,6 +492,19 @@ async function runTests() {
   assert.equal((await billingService.cancelSubscription(first.user)).status, 'CANCELLED');
   await assert.rejects(() => billingService.activateSubscription(first.user), /CANCELLED status/);
   assert.equal((await billingService.getSubscriptionAccess(first.org._id)).active, false);
+
+  const duplicateLoginEmail = `shared-login-${suffix}@example.com`;
+  const duplicateLoginAccount = {
+    name: 'Shared Login User', email: duplicateLoginEmail, password: 'password123', role: 'CASHIER',
+    branchAccess: [], status: 'ACTIVE',
+  };
+  await userService.createOrganizationUser(first.org._id, duplicateLoginAccount);
+  await userService.createOrganizationUser(second.org._id, duplicateLoginAccount);
+  await assert.rejects(() => login({ email: duplicateLoginEmail, password: duplicateLoginAccount.password }), /organizationId is required when email is associated with multiple organizations/);
+  const firstOrgLogin = await login({ email: duplicateLoginEmail, password: duplicateLoginAccount.password, organizationId: first.org._id.toString() });
+  const secondOrgLogin = await login({ email: duplicateLoginEmail, password: duplicateLoginAccount.password, organizationId: second.org._id.toString() });
+  assert.equal(firstOrgLogin.user.organizationId.toString(), first.org._id.toString());
+  assert.equal(secondOrgLogin.user.organizationId.toString(), second.org._id.toString());
 
   console.log('ALL PHASE 6 EMPIRICAL TESTS PASSED SUCCESSFULLY!');
   await mongoose.connection.close();

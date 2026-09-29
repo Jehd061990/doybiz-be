@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import * as reservationController from '../controllers/reservationController';
-import { authenticateUser, authorizeRole } from '../middlewares/auth';
+import { authenticateUser, authorizeModule, authorizeRole } from '../middlewares/auth';
 
 const router = Router();
 
 router.use(authenticateUser);
+router.use(authorizeModule('APPOINTMENTS'));
 
 router.post('/', authorizeRole(['OWNER', 'MANAGER', 'CASHIER']), reservationController.create);
 router.get('/', authorizeRole(['OWNER', 'MANAGER', 'CASHIER']), reservationController.getAll);

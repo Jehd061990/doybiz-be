@@ -13,6 +13,9 @@ import BillingRecord from './models/BillingRecord';
 import BillingPayment from './models/BillingPayment';
 import BillingCounter from './models/BillingCounter';
 import { XenditService } from './services/xenditService';
+import { canAccessBranch, canAccessModule } from './utils/branchAccess';
+import { applyRolePreset, ROLE_PRESETS } from './utils/rolePermissions';
+import * as userService from './services/userService';
 
 dotenv.config();
 
@@ -37,6 +40,17 @@ async function runTests() {
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'MANAGER').nextCalled, true);
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'CASHIER').statusCode, 403);
   assert.equal(roleAllowed(['OWNER'], 'MANAGER').statusCode, 403);
+  assert.deepEqual(ROLE_PRESETS.CASHIER, ['POS', 'SALES', 'APPOINTMENTS', 'CUSTOMERS']);
+  assert.deepEqual(ROLE_PRESETS.MANAGER, ['POS', 'SALES', 'APPOINTMENTS', 'CUSTOMERS', 'REPORTS', 'STAFF']);
+  assert.deepEqual(applyRolePreset('CASHIER'), ROLE_PRESETS.CASHIER);
+  const restrictedUser = { role: 'CASHIER', branchAccess: [], modulePermissions: ['POS', 'SALES'] } as any;
+  assert.equal(canAccessModule(restrictedUser, 'POS'), true);
+  assert.equal(canAccessModule(restrictedUser, 'BILLING'), false);
+  assert.equal(canAccessBranch(restrictedUser, '507f1f77bcf86cd799439011'), false);
+  restrictedUser.branchAccess = ['507f1f77bcf86cd799439011'];
+  assert.equal(canAccessBranch(restrictedUser, '507f1f77bcf86cd799439011'), true);
+  restrictedUser.branchAccess = 'ALL';
+  assert.equal(canAccessBranch(restrictedUser, '507f1f77bcf86cd799439011'), false);
 
   const previousXenditKey = process.env.XENDIT_SECRET_KEY;
   const originalCreatePaymentRequest = (XenditService.prototype as any).createPaymentRequest;
@@ -104,6 +118,51 @@ async function runTests() {
     },
   }, { 'x-callback-token': 'test_webhook_secret' });
   assert.equal(replayWebhook.payment._id.toString(), successfulWebhook.payment._id.toString());
+  const xenditIncludedUsers = await Promise.all([1, 2].map(index => User.create({
+    organizationId: xenditOrg.org._id,
+    name: `Xendit Included ${index}`,
+    email: `xendit-included-${index}-${suffix}@example.com`,
+    passwordHash: 'test',
+    role: 'CASHIER',
+    branchAccess: [xenditBranch._id.toString()],
+    status: 'ACTIVE',
+  })));
+  const xenditAddedUser = await User.create({
+    organizationId: xenditOrg.org._id,
+    name: 'Xendit Added User',
+    email: `xendit-added-${suffix}@example.com`,
+    passwordHash: 'test',
+    role: 'CASHIER',
+    branchAccess: [xenditBranch._id.toString()],
+    status: 'ACTIVE',
+    billingEffectiveAt: new Date(),
+  });
+  const xenditAdjustment = await billingService.createMidTermAdjustment(xenditOrg.user, { userIds: [xenditAddedUser._id.toString()] });
+  assert.equal(xenditAdjustment.lineItems.length, 1);
+  assert.equal(xenditAdjustment.lineItems[0].userId?.toString(), xenditAddedUser._id.toString());
+  assert.equal((await User.findById(xenditAddedUser._id))?.billingActivationPending, true);
+  const adjustmentProviderId = `xendit_adjustment_${suffix}`;
+  (XenditService.prototype as any).createPaymentRequest = async function (input: any) {
+    return { id: adjustmentProviderId, status: 'ACCEPTING_PAYMENTS', reference_id: input.referenceId, actions: [], metadata: input.metadata };
+  };
+  const xenditAdjustmentRequest = await billingService.createXenditPaymentRequest(xenditAdjustment._id.toString(), xenditOrg.user);
+  const xenditAdjustmentWebhook = await billingService.reconcileXenditWebhook({
+    event: 'payment_request.succeeded',
+    data: {
+      id: adjustmentProviderId,
+      status: 'SUCCEEDED',
+      amount: xenditAdjustment.totalAmount,
+      currency: 'PHP',
+      reference_id: `BILLING-${xenditAdjustment._id.toString()}`,
+      metadata: { organizationId: xenditOrg.org._id.toString(), billingRecordId: xenditAdjustment._id.toString(), billingType: 'ADJUSTMENT' },
+    },
+  }, { 'x-callback-token': 'test_webhook_secret' });
+  assert.equal(xenditAdjustmentRequest.payment.status, 'PENDING');
+  assert.equal(xenditAdjustmentWebhook.payment.status, 'COMPLETED');
+  assert.equal(xenditAdjustmentWebhook.record.status, 'PAID');
+  assert.equal((await User.findById(xenditAddedUser._id))?.status, 'ACTIVE');
+  assert.equal((await User.findById(xenditAddedUser._id))?.billingActivationPending, false);
+  assert.equal((await User.findById(xenditIncludedUsers[0]._id))?.status, 'ACTIVE');
   process.env.XENDIT_WEBHOOK_TOKEN = previousWebhookToken;
 
   (XenditService.prototype as any).createPaymentRequest = originalCreatePaymentRequest;
@@ -128,81 +187,129 @@ async function runTests() {
 
   const prepaidAdjustmentOrg = await registerOrganization({ orgName: 'Prepaid Adjustment Org', slug: `prepaid-adjust-${suffix}`, email: `prepaid-adjust-${suffix}@example.com`, phone: '09600000999', address: 'Adjustment', userName: 'Adjustment Owner', password: 'password123' });
   const originalBranch = await Branch.create({ organizationId: prepaidAdjustmentOrg.org._id, name: 'Original Branch', address: 'Original', contactNumber: '09600000010', status: 'ACTIVE', billingEffectiveAt: new Date('2025-12-31T00:00:00.000Z') });
+  const secondPrepaidBranch = await Branch.create({ organizationId: prepaidAdjustmentOrg.org._id, name: 'Second Branch', address: 'Second', contactNumber: '09600000012', status: 'ACTIVE', billingEffectiveAt: new Date('2025-12-31T00:00:00.000Z') });
+  for (let index = 0; index < 5; index += 1) {
+    await User.create({ organizationId: prepaidAdjustmentOrg.org._id, name: `Included User ${index + 1}`, email: `included-${index + 1}-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: index % 2 === 0 ? [originalBranch._id.toString(), secondPrepaidBranch._id.toString()] : [originalBranch._id.toString()], status: 'ACTIVE' });
+  }
   const prepaidSubscriptionResult = await billingService.activateSubscription(prepaidAdjustmentOrg.user, { paymentTermMonths: 6 });
   const prepaidSubscription = prepaidSubscriptionResult.subscription;
   prepaidSubscription.currentPeriodStart = new Date('2026-01-01T00:00:00.000Z');
   prepaidSubscription.currentPeriodEnd = new Date('2026-06-30T23:59:59.999Z');
   await prepaidSubscription.save();
   const originalInvoice = await billingService.generateSubscriptionInvoice(prepaidAdjustmentOrg.user);
+  assert.equal(originalInvoice.totalAmount, 2998 * 6);
   const originalInvoicePayment = await billingService.recordBillingPayment(originalInvoice._id.toString(), { amount: originalInvoice.totalAmount, paymentMethod: 'BANK_TRANSFER', idempotencyKey: `prepaid-original-${suffix}` }, prepaidAdjustmentOrg.user);
   assert.equal(originalInvoicePayment.record.status, 'PAID');
 
-  const addedBranch = await Branch.create({ organizationId: prepaidAdjustmentOrg.org._id, name: 'Added Branch', address: 'Added', contactNumber: '09600000011', status: 'INACTIVE', billingEffectiveAt: new Date('2026-04-15T00:00:00.000Z') });
-  const addedUserOne = await User.create({ organizationId: prepaidAdjustmentOrg.org._id, name: 'Added One', email: `added-one-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [addedBranch._id.toString()], status: 'ACTIVE', billingEffectiveAt: new Date('2026-04-15T00:00:00.000Z') });
-  const addedUserTwo = await User.create({ organizationId: prepaidAdjustmentOrg.org._id, name: 'Added Two', email: `added-two-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [addedBranch._id.toString()], status: 'ACTIVE', billingEffectiveAt: new Date('2026-04-15T00:00:00.000Z') });
-  const adjustment = await billingService.createMidTermAdjustment(prepaidAdjustmentOrg.user, { branches: [addedBranch._id.toString()], users: [{ userId: addedUserOne._id.toString(), branchId: addedBranch._id.toString() }, { userId: addedUserTwo._id.toString(), branchId: addedBranch._id.toString() }] });
+  const addedUser = await User.create({ organizationId: prepaidAdjustmentOrg.org._id, name: 'Added User', email: `added-user-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [originalBranch._id.toString(), secondPrepaidBranch._id.toString()], status: 'ACTIVE', billingEffectiveAt: new Date('2026-04-15T00:00:00.000Z') });
+  const adjustment = await billingService.createMidTermAdjustment(prepaidAdjustmentOrg.user, { userIds: [addedUser._id.toString()] });
   assert.equal(adjustment.billingType, 'ADJUSTMENT');
-  assert.equal(adjustment.lineItems.length, 3);
+  assert.equal(adjustment.lineItems.length, 1);
+  assert.equal(adjustment.lineItems[0].userId?.toString(), addedUser._id.toString());
+  assert.equal(adjustment.lineItems[0].branchId, undefined);
+  assert.ok(Math.abs(adjustment.lineItems[0].amount - 506.67) < 0.01);
   assert.equal(adjustment.status, 'PENDING');
-  assert.equal(addedBranch.billingActivationPending, false);
-  const pendingBranch = await Branch.findById(addedBranch._id);
-  const pendingUser = await User.findById(addedUserOne._id);
-  assert.equal(pendingBranch?.status, 'INACTIVE');
-  assert.equal(pendingBranch?.billingActivationPending, true);
+  const pendingUser = await User.findById(addedUser._id);
   assert.equal(pendingUser?.status, 'INACTIVE');
   assert.equal(pendingUser?.billingActivationPending, true);
-  const refreshedAdjustment = await billingService.createMidTermAdjustment(prepaidAdjustmentOrg.user, { branches: [addedBranch._id.toString()], users: [{ userId: addedUserOne._id.toString(), branchId: addedBranch._id.toString() }] });
+  const refreshedAdjustment = await billingService.createMidTermAdjustment(prepaidAdjustmentOrg.user, { userIds: [addedUser._id.toString()] });
   assert.equal(refreshedAdjustment._id.toString(), adjustment._id.toString());
   assert.equal(await BillingRecord.countDocuments({ organizationId: prepaidAdjustmentOrg.org._id, billingType: 'ADJUSTMENT' }), 1);
-  assert.equal(originalInvoice.totalAmount, originalInvoicePayment.record.totalAmount);
   const adjustmentPayment = await billingService.recordBillingPayment(adjustment._id.toString(), { amount: adjustment.totalAmount, paymentMethod: 'GCASH', idempotencyKey: `adjustment-${suffix}` }, prepaidAdjustmentOrg.user);
   assert.equal(adjustmentPayment.record.status, 'PAID');
+  assert.equal((await User.findById(addedUser._id))?.status, 'ACTIVE');
+  assert.equal((await User.findById(addedUser._id))?.billingActivationPending, false);
+  assert.equal((await BillingRecord.findById(originalInvoice._id))?.totalAmount, originalInvoicePayment.record.totalAmount);
+
+  const addedBranch = await Branch.create({ organizationId: prepaidAdjustmentOrg.org._id, name: 'Added Branch', address: 'Added', contactNumber: '09600000011', status: 'INACTIVE', billingEffectiveAt: new Date('2026-04-15T00:00:00.000Z') });
+  const branchAdjustment = await billingService.createMidTermAdjustment(prepaidAdjustmentOrg.user, { branches: [addedBranch._id.toString()] });
+  assert.equal(branchAdjustment.lineItems.length, 1);
+  const pendingBranch = await Branch.findById(addedBranch._id);
+  assert.equal(pendingBranch?.status, 'INACTIVE');
+  assert.equal(pendingBranch?.billingActivationPending, true);
+  const branchAdjustmentPayment = await billingService.recordBillingPayment(branchAdjustment._id.toString(), { amount: branchAdjustment.totalAmount, paymentMethod: 'GCASH', idempotencyKey: `branch-adjustment-${suffix}` }, prepaidAdjustmentOrg.user);
+  assert.equal(branchAdjustmentPayment.record.status, 'PAID');
   assert.equal((await Branch.findById(addedBranch._id))?.status, 'ACTIVE');
-  assert.equal((await User.findById(addedUserOne._id))?.billingActivationPending, false);
+  assert.equal((await BillingRecord.findById(originalInvoice._id))?.totalAmount, originalInvoice.totalAmount);
 
   prepaidSubscription.currentPeriodStart = new Date('2026-07-01T00:00:00.000Z');
   prepaidSubscription.currentPeriodEnd = new Date('2026-12-31T23:59:59.999Z');
   await prepaidSubscription.save();
   const renewalInvoice = await billingService.generateSubscriptionInvoice(prepaidAdjustmentOrg.user);
   assert.equal(renewalInvoice.paymentTermMonths, 6);
-  assert.ok(renewalInvoice.totalAmount >= 1499 * 6);
+  assert.equal(renewalInvoice.totalAmount, 1499 * 3 * 6);
   void originalBranch;
   const branchA = await Branch.create({ organizationId: first.org._id, name: 'Branch A', address: 'A', contactNumber: '09500000003', status: 'ACTIVE' });
   const branchB = await Branch.create({ organizationId: first.org._id, name: 'Branch B', address: 'B', contactNumber: '09500000004', status: 'ACTIVE' });
   const branchC = await Branch.create({ organizationId: first.org._id, name: 'Branch C', address: 'C', contactNumber: '09500000005', status: 'ACTIVE' });
   const branchD = await Branch.create({ organizationId: first.org._id, name: 'Branch D', address: 'D', contactNumber: '09500000006', status: 'ACTIVE' });
   const branchE = await Branch.create({ organizationId: first.org._id, name: 'Branch E', address: 'E', contactNumber: '09500000007', status: 'ACTIVE' });
+  const foreignBranch = await Branch.create({ organizationId: second.org._id, name: 'Foreign Branch', address: 'Foreign', contactNumber: '09500000008', status: 'ACTIVE' });
+  const managedUser = await userService.createOrganizationUser(first.org._id, {
+    name: 'Permission Test User', email: `permission-${suffix}@example.com`, password: 'password123', role: 'CASHIER',
+    branchAccess: [branchA._id.toString(), branchB._id.toString()], permissionPreset: 'CASHIER', status: 'INACTIVE',
+  });
+  assert.deepEqual(managedUser.modulePermissions, ROLE_PRESETS.CASHIER);
+  const presetOnlyUpdate = await userService.updateOrganizationUser(first.org._id, managedUser._id.toString(), { permissionPreset: 'MANAGER' });
+  assert.deepEqual(presetOnlyUpdate.modulePermissions, ROLE_PRESETS.CASHIER);
+  const customizedPermissions = await userService.updateOrganizationUser(first.org._id, managedUser._id.toString(), { modulePermissions: [...ROLE_PRESETS.CASHIER, 'BILLING'] });
+  assert.ok(customizedPermissions.modulePermissions.includes('BILLING'));
+  const retainedCustomization = await userService.updateOrganizationUser(first.org._id, managedUser._id.toString(), { permissionPreset: 'CASHIER' });
+  assert.ok(retainedCustomization.modulePermissions.includes('BILLING'));
+  const resetPermissions = await userService.updateOrganizationUser(first.org._id, managedUser._id.toString(), { permissionPreset: 'CASHIER', applyPreset: true });
+  assert.deepEqual(resetPermissions.modulePermissions, ROLE_PRESETS.CASHIER);
+  await assert.rejects(() => userService.updateOrganizationUser(first.org._id, managedUser._id.toString(), { modulePermissions: ['INVENTORY'] }), /Invalid module permission/);
+  await assert.rejects(() => userService.updateOrganizationUser(first.org._id, managedUser._id.toString(), { branchAccess: [foreignBranch._id.toString()] }), /do not belong to this organization/);
+  await assert.rejects(() => userService.updateOrganizationUser(second.org._id, managedUser._id.toString(), { status: 'INACTIVE' }), /not found in this organization/);
+  await assert.rejects(() => userService.updateOrganizationUser(first.org._id, first.user._id.toString(), { role: 'MANAGER' }), /at least one active owner/);
   const users = [
-    { name: 'Manager A', email: `manager-a-${suffix}@example.com`, branchAccess: [branchA._id.toString()] },
-    { name: 'Cashier A', email: `cashier-a-${suffix}@example.com`, branchAccess: [branchA._id.toString()] },
-    { name: 'Manager B', email: `manager-b-${suffix}@example.com`, branchAccess: [branchB._id.toString()] },
-    { name: 'Cashier B', email: `cashier-b-${suffix}@example.com`, branchAccess: [branchB._id.toString()] },
+    { name: 'Manager A', email: `manager-a-${suffix}@example.com`, branchAccess: [branchA._id.toString(), branchB._id.toString()], role: 'MANAGER' },
+    { name: 'Cashier A1', email: `cashier-a1-${suffix}@example.com`, branchAccess: [branchA._id.toString()], role: 'CASHIER' },
+    { name: 'Cashier A2', email: `cashier-a2-${suffix}@example.com`, branchAccess: [branchA._id.toString()], role: 'CASHIER' },
+    { name: 'Cashier B1', email: `cashier-b1-${suffix}@example.com`, branchAccess: [branchB._id.toString()], role: 'CASHIER' },
+    { name: 'Cashier B2', email: `cashier-b2-${suffix}@example.com`, branchAccess: [branchB._id.toString()], role: 'CASHIER' },
   ];
-  await User.insertMany(users.map(user => ({ ...user, organizationId: first.org._id, passwordHash: 'test', role: 'MANAGER', status: 'ACTIVE' })));
+  await User.insertMany(users.map(user => ({ ...user, organizationId: first.org._id, passwordHash: 'test', status: 'ACTIVE' })));
   await Branch.updateMany({ _id: { $in: [branchC._id, branchD._id, branchE._id] } }, { $set: { status: 'INACTIVE' } });
 
   let estimate = await billingService.calculateEstimate(first.user);
   assert.equal(estimate.breakdown.length, 2);
-  assert.equal(estimate.breakdown.find(item => item.branchId.toString() === branchA._id.toString())?.activeUsers, 3);
-  assert.equal(estimate.breakdown.find(item => item.branchId.toString() === branchB._id.toString())?.activeUsers, 3);
+  assert.equal(estimate.activeOrganizationUsers, 6);
+  assert.equal(estimate.includedUserSeats, 6);
+  assert.equal(estimate.additionalUserCount, 0);
   assert.equal(estimate.monthlyBranchCharges, 2998);
   assert.equal(estimate.additionalUserCharges, 0);
   assert.equal(estimate.monthlyTotal, 2998);
   assert.equal(estimate.setupFee, 5000);
 
-  const extraUser = await User.create({ organizationId: first.org._id, name: 'Extra User', email: `extra-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [branchA._id.toString()], status: 'ACTIVE' });
-  const extraUserTwo = await User.create({ organizationId: first.org._id, name: 'Extra User Two', email: `extra-two-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [branchA._id.toString()], status: 'ACTIVE' });
+  const extraUser = await User.create({ organizationId: first.org._id, name: 'Extra User', email: `extra-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [branchA._id.toString(), branchB._id.toString()], status: 'ACTIVE' });
   await User.create({ organizationId: first.org._id, name: 'Inactive User', email: `inactive-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [branchA._id.toString()], status: 'INACTIVE' });
   estimate = await billingService.calculateEstimate(first.user);
-  assert.equal(estimate.breakdown.find(item => item.branchId.toString() === branchA._id.toString())?.activeUsers, 5);
-  assert.equal(estimate.breakdown.find(item => item.branchId.toString() === branchB._id.toString())?.activeUsers, 3);
-  assert.equal(estimate.additionalUserCharges, 400);
-  assert.equal(estimate.monthlyTotal, 3398);
-
-  await Branch.updateMany({ _id: { $in: [branchC._id, branchD._id, branchE._id] } }, { $set: { status: 'ACTIVE' } });
+  assert.equal(estimate.activeOrganizationUsers, 7);
+  assert.equal(estimate.includedUserSeats, 6);
+  assert.equal(estimate.additionalUserCount, 1);
+  assert.equal(estimate.additionalUserCharges, 200);
+  assert.equal(estimate.monthlyTotal, 3198);
+  extraUser.status = 'INACTIVE';
+  await extraUser.save();
   estimate = await billingService.calculateEstimate(first.user);
-  assert.equal(estimate.breakdown.length, 5);
-  assert.equal(estimate.monthlyTotal, 7895);
+  assert.equal(estimate.activeOrganizationUsers, 6);
+  assert.equal(estimate.additionalUserCount, 0);
+  assert.equal(estimate.additionalUserCharges, 0);
+  extraUser.status = 'ACTIVE';
+  await extraUser.save();
+
+  await Branch.updateOne({ _id: branchC._id, organizationId: first.org._id }, { $set: { status: 'ACTIVE' } });
+  extraUser.branchAccess = [branchA._id.toString(), branchB._id.toString(), branchC._id.toString()];
+  await extraUser.save();
+  estimate = await billingService.calculateEstimate(first.user);
+  assert.equal(estimate.activeOrganizationUsers, 7);
+  assert.equal(estimate.includedUserSeats, 9);
+  assert.equal(estimate.additionalUserCount, 0);
+  assert.equal(estimate.additionalUserCharges, 0);
+  assert.equal(estimate.monthlyTotal, 4497);
+  branchC.status = 'INACTIVE';
+  await branchC.save();
 
   const activated = await billingService.activateSubscription(first.user);
   assert.equal(activated.setupInvoice.totalAmount, 5000);
@@ -242,6 +349,7 @@ async function runTests() {
   branchB.billingEffectiveAt = halfwayDate;
   await branchA.save();
   await branchB.save();
+  const extraUserTwo = await User.create({ organizationId: first.org._id, name: 'Extra User Two', email: `extra-two-${suffix}@example.com`, passwordHash: 'test', role: 'CASHIER', branchAccess: [branchA._id.toString(), branchB._id.toString()], status: 'ACTIVE' });
   extraUser.billingEffectiveAt = fullPeriodDate;
   extraUserTwo.billingEffectiveAt = fullPeriodDate;
   await extraUser.save();
@@ -252,7 +360,7 @@ async function runTests() {
   extraUserTwo.billingEffectiveAt = halfwayDate;
   await extraUserTwo.save();
   const halfwayEstimate = await billingService.calculateEstimate(first.user, billingPeriod);
-  const halfwayDetails = halfwayEstimate.breakdown.find(item => item.branchId.toString() === branchA._id.toString())!.additionalUserDetails;
+  const halfwayDetails = halfwayEstimate.additionalUserDetails;
   assert.equal(halfwayDetails.length, 2);
   assert.ok(Math.abs(halfwayDetails[1].proratedAmount - 100) <= 1);
 
@@ -269,14 +377,15 @@ async function runTests() {
   await extraUser.save();
   await extraUserTwo.save();
   const consolidatedEstimate = await billingService.calculateEstimate(first.user, billingPeriod);
-  const consolidatedDetails = consolidatedEstimate.breakdown.find(item => item.branchId.toString() === branchA._id.toString())!.additionalUserDetails;
+  const consolidatedDetails = consolidatedEstimate.additionalUserDetails;
   assert.equal(consolidatedDetails.length, 2);
   assert.notEqual(consolidatedDetails[0].userId.toString(), consolidatedDetails[1].userId.toString());
 
   extraUserTwo.status = 'INACTIVE';
   await extraUserTwo.save();
   const inactiveEstimate = await billingService.calculateEstimate(first.user, billingPeriod);
-  assert.equal(inactiveEstimate.breakdown.find(item => item.branchId.toString() === branchA._id.toString())!.additionalUserDetails.length, 1);
+  assert.equal(inactiveEstimate.activeOrganizationUsers, 7);
+  assert.equal(inactiveEstimate.additionalUserDetails.length, 1);
   extraUserTwo.status = 'ACTIVE';
   extraUser.billingEffectiveAt = new Date(billingPeriod.start.getTime() - 1);
   extraUserTwo.billingEffectiveAt = new Date(billingPeriod.start.getTime() - 1);
@@ -287,6 +396,7 @@ async function runTests() {
   await extraUser.save();
   await extraUserTwo.save();
   const removedEstimate = await billingService.calculateEstimate(first.user, billingPeriod);
+  assert.equal(removedEstimate.activeOrganizationUsers, 6);
   assert.equal(removedEstimate.additionalUserCharges, 0);
   extraUser.status = 'ACTIVE';
   extraUserTwo.status = 'ACTIVE';
@@ -295,15 +405,9 @@ async function runTests() {
   await extraUser.save();
   await extraUserTwo.save();
 
-  branchC.status = 'ACTIVE';
-  branchC.billingEffectiveAt = nearEndDate;
-  branchD.status = 'ACTIVE';
-  branchD.billingEffectiveAt = halfwayDate;
-  branchE.status = 'ACTIVE';
-  branchE.billingEffectiveAt = new Date(billingPeriod.start.getTime() - 1);
-  await branchC.save();
-  await branchD.save();
-  await branchE.save();
+  await Branch.updateOne({ _id: branchC._id, organizationId: first.org._id }, { $set: { status: 'ACTIVE', billingEffectiveAt: nearEndDate } });
+  await Branch.updateOne({ _id: branchD._id, organizationId: first.org._id }, { $set: { status: 'ACTIVE', billingEffectiveAt: halfwayDate } });
+  await Branch.updateOne({ _id: branchE._id, organizationId: first.org._id }, { $set: { status: 'ACTIVE', billingEffectiveAt: new Date(billingPeriod.start.getTime() - 1) } });
   const expectedInvoice = await billingService.calculateEstimate(first.user);
   const invoice = await billingService.generateSubscriptionInvoice(first.user);
   assert.equal(invoice.totalAmount, expectedInvoice.monthlyTotal);
@@ -316,7 +420,7 @@ async function runTests() {
   assert.equal(await BillingPayment.countDocuments({ billingRecordId: activated.setupInvoice._id }), 1);
   await assert.rejects(() => billingService.recordBillingPayment(activated.setupInvoice._id.toString(), { amount: 1, paymentMethod: 'CASH', idempotencyKey: 'setup-payment-2' }, first.user), /cannot accept payments/);
 
-  assert.equal(invoice.lineItems.length, 7);
+  assert.equal(invoice.lineItems.length, 5);
   const proratedLine = adjustment.lineItems.find(item => item.userId);
   assert.ok(proratedLine?.daysCharged);
   assert.ok(proratedLine?.totalBillingDays);

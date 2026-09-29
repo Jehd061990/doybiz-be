@@ -42,11 +42,6 @@ const getStandardPlan = async () => {
 
 const getActiveBranches = async (orgId: Types.ObjectId) => Branch.find({ organizationId: orgId, status: 'ACTIVE', billingActivationPending: { $ne: true } }).select('_id name billingEffectiveAt createdAt');
 
-const countUsersForBranch = (users: IUser[], branchId: Types.ObjectId) => users.filter(user => {
-  if (user.role === 'OWNER' || user.branchAccess === 'ALL') return true;
-  return Array.isArray(user.branchAccess) && user.branchAccess.some(id => id.toString() === branchId.toString());
-}).length;
-
 type BillingPeriod = { start: Date; end: Date };
 
 const dayMilliseconds = 24 * 60 * 60 * 1000;
@@ -94,46 +89,39 @@ export const calculateEstimate = async (user: IUser, period?: BillingPeriod) => 
   ]);
   if (!plan) throw new Error('Active subscription plan is unavailable');
 
+  const activeOrganizationUsers = users.length;
+  const includedUserSeats = branches.length * plan.includedUsersPerBranch;
+  const additionalUserCount = Math.max(0, activeOrganizationUsers - includedUserSeats);
+  const totalDays = period ? billingDays(period) : undefined;
+  const chargeableUsers = [...users]
+    .sort((left, right) => billingEffectiveDate(left).getTime() - billingEffectiveDate(right).getTime())
+    .slice(includedUserSeats);
+  const additionalUserDetails = chargeableUsers.map(candidate => {
+    const effectiveDate = billingEffectiveDate(candidate);
+    const daysCharged = period ? chargedDays(effectiveDate, period) : undefined;
+    const proratedAmount = period && totalDays
+      ? round(plan.additionalUserPrice * (daysCharged || 0) / totalDays)
+      : plan.additionalUserPrice;
+    return {
+      userId: candidate._id,
+      daysCharged,
+      totalBillingDays: totalDays,
+      monthlyUnitPrice: plan.additionalUserPrice,
+      proratedAmount,
+      effectiveDate,
+      endDate: period?.end,
+    };
+  });
+  const additionalUserCharges = round(additionalUserDetails.reduce((total, detail) => total + detail.proratedAmount, 0));
   const breakdown = branches.map(branch => {
-    const activeUsers = countUsersForBranch(users, branch._id);
-    const eligibleUsers = users
-      .filter(candidate => {
-        if (candidate.role === 'OWNER' || candidate.branchAccess === 'ALL') return true;
-        return Array.isArray(candidate.branchAccess) && candidate.branchAccess.some(id => id.toString() === branch._id.toString());
-      })
-      .sort((left, right) => billingEffectiveDate(left).getTime() - billingEffectiveDate(right).getTime());
-    const additionalUsers = Math.max(activeUsers - plan.includedUsersPerBranch, 0);
     const effectiveDate = branchBillingEffectiveDate(branch);
     const branchDaysCharged = period ? chargedDays(effectiveDate, period) : undefined;
-    const totalDays = period ? billingDays(period) : undefined;
     const branchCharge = period && totalDays ? round(plan.monthlyBranchPrice * (branchDaysCharged || 0) / totalDays) : plan.monthlyBranchPrice;
-    const chargeableUsers = eligibleUsers.slice(plan.includedUsersPerBranch);
-    const additionalUserDetails = chargeableUsers.map(candidate => {
-      const effectiveDate = billingEffectiveDate(candidate);
-      const daysCharged = period ? chargedDays(effectiveDate, period) : undefined;
-      const proratedAmount = period && totalDays ? round(plan.additionalUserPrice * (daysCharged || 0) / totalDays) : plan.additionalUserPrice;
-      return {
-        userId: candidate._id,
-        branchId: branch._id,
-        daysCharged,
-        totalBillingDays: totalDays,
-        monthlyUnitPrice: plan.additionalUserPrice,
-        proratedAmount,
-        effectiveDate,
-        endDate: period?.end,
-      };
-    });
-    const additionalUserCharge = round(additionalUserDetails.reduce((total, detail) => total + detail.proratedAmount, 0));
     return {
       branchId: branch._id,
       branchName: branch.name,
-      activeUsers,
-      includedUsers: plan.includedUsersPerBranch,
-      additionalUsers,
       branchCharge,
-      additionalUserCharge,
-      total: branchCharge + additionalUserCharge,
-      additionalUserDetails,
+      total: branchCharge,
       branchDetails: {
         daysCharged: branchDaysCharged,
         totalBillingDays: totalDays,
@@ -146,15 +134,18 @@ export const calculateEstimate = async (user: IUser, period?: BillingPeriod) => 
     };
   });
   const monthlyBranchCharges = breakdown.reduce((total, item) => total + item.branchCharge, 0);
-  const additionalUserCharges = breakdown.reduce((total, item) => total + item.additionalUserCharge, 0);
   return {
     plan: { id: plan._id, name: plan.name, code: plan.code, currency: plan.currency, billingInterval: plan.billingInterval },
     setupFee: plan.setupFee,
+    activeOrganizationUsers,
+    includedUserSeats,
+    additionalUserCount,
     monthlyBranchCharges,
     additionalUserCharges,
     monthlyTotal: monthlyBranchCharges + additionalUserCharges,
     currency: plan.currency,
     breakdown,
+    additionalUserDetails,
   };
 };
 
@@ -271,13 +262,10 @@ export const generateSubscriptionInvoice = async (user: IUser) => {
   if (existing?.status === 'PAID' || existing?.status === 'VOID') return existing;
   const paymentTermMonths = subscription.paymentTermMonths || 1;
   const estimate = await calculateEstimate(user);
-  const lineItems = estimate.breakdown.flatMap(item => [
-    {
+  const lineItems = [
+    ...estimate.breakdown.map(item => ({
       description: item.branchName,
       branchId: item.branchId,
-      activeUsers: item.activeUsers,
-      includedUsers: item.includedUsers,
-      additionalUsers: 0,
       daysCharged: undefined,
       totalBillingDays: undefined,
       monthlyUnitPrice: item.branchDetails.monthlyUnitPrice,
@@ -289,13 +277,12 @@ export const generateSubscriptionInvoice = async (user: IUser) => {
       branchCharge: round(item.branchCharge * paymentTermMonths),
       additionalUserCharge: 0,
       amount: round(item.branchCharge * paymentTermMonths),
-    },
-    ...item.additionalUserDetails.map(detail => ({
-      description: 'Additional user charge',
-      branchId: detail.branchId,
+    })),
+    ...estimate.additionalUserDetails.map(detail => ({
+      description: 'Additional organization user charge',
       userId: detail.userId,
-      daysCharged: undefined,
-      totalBillingDays: undefined,
+      daysCharged: detail.daysCharged,
+      totalBillingDays: detail.totalBillingDays,
       monthlyUnitPrice: detail.monthlyUnitPrice,
       proratedAmount: round(detail.proratedAmount * paymentTermMonths),
       effectiveDate: subscription.currentPeriodStart,
@@ -308,7 +295,7 @@ export const generateSubscriptionInvoice = async (user: IUser) => {
       amount: round(detail.proratedAmount * paymentTermMonths),
       paymentTermMonths,
     })),
-  ]);
+  ];
   const branchCharges = round(estimate.monthlyBranchCharges * paymentTermMonths);
   const additionalUserCharges = round(estimate.additionalUserCharges * paymentTermMonths);
   const totalAmount = round(branchCharges + additionalUserCharges);
@@ -355,19 +342,42 @@ export const createMidTermAdjustment = async (user: IUser, data: any = {}) => {
   const orgId = organizationId(user);
   const existing = await BillingRecord.findOne({ organizationId: orgId, subscriptionId: subscription._id, billingType: 'ADJUSTMENT', status: 'PENDING' });
   const branchIds = new Set<string>((data.branchIds || data.branches || []).map((id: string) => id.toString()));
-  const userEntries = new Map<string, string>();
-  for (const entry of data.users || []) userEntries.set(entry.userId.toString(), entry.branchId.toString());
-  for (const id of data.userIds || []) userEntries.set(id.toString(), data.branchId?.toString() || '');
+  const userEntries = new Map<string, string | undefined>();
+  for (const entry of data.users || []) userEntries.set(entry.userId.toString(), entry.branchId?.toString());
+  for (const id of data.userIds || []) userEntries.set(id.toString(), data.branchId?.toString());
   for (const line of existing?.lineItems || []) {
     if (line.targetType === 'BRANCH' && line.targetId) branchIds.add(line.targetId.toString());
-    if (line.targetType === 'USER' && line.targetId) userEntries.set(line.targetId.toString(), line.branchId?.toString() || '');
+    if (line.targetType === 'USER' && line.targetId) userEntries.set(line.targetId.toString(), line.branchId?.toString());
   }
   if (branchIds.size === 0 && userEntries.size === 0) throw new Error('At least one branch or user addition is required');
 
-  const branches = await Branch.find({ organizationId: orgId, _id: { $in: [...branchIds].map(id => new Types.ObjectId(id)) } }).select('_id name status billingEffectiveAt createdAt');
+  const branches = await Branch.find({ organizationId: orgId, _id: { $in: [...branchIds].map(id => new Types.ObjectId(id)) } }).select('_id name status billingActivationPending billingEffectiveAt createdAt');
   if (branches.length !== branchIds.size) throw new Error('One or more branches were not found in this organization');
-  const users = await User.find({ organizationId: orgId, _id: { $in: [...userEntries.keys()].map(id => new Types.ObjectId(id)) } }).select('_id name status branchAccess billingEffectiveAt createdAt');
+  const users = await User.find({ organizationId: orgId, _id: { $in: [...userEntries.keys()].map(id => new Types.ObjectId(id)) } }).select('_id name status branchAccess billingActivationPending billingEffectiveAt createdAt');
   if (users.length !== userEntries.size) throw new Error('One or more users were not found in this organization');
+
+  const assignedBranchIds = [...new Set([...userEntries.values()].filter((id): id is string => Boolean(id)))];
+  if (assignedBranchIds.length > 0) {
+    const assignedBranches = await Branch.countDocuments({ organizationId: orgId, _id: { $in: assignedBranchIds.map(id => new Types.ObjectId(id)) } });
+    if (assignedBranches !== assignedBranchIds.length) throw new Error('One or more user branches were not found in this organization');
+  }
+
+  const activeBranches = await getActiveBranches(orgId);
+  const activeBranchIds = new Set(activeBranches.map(branch => branch._id.toString()));
+  const projectedBranchCount = activeBranches.length + branches.filter(branch => !activeBranchIds.has(branch._id.toString())).length;
+  const requestedUserIds = users.map(candidate => candidate._id);
+  const activeUsersBefore = await User.countDocuments({
+    organizationId: orgId,
+    status: 'ACTIVE',
+    billingActivationPending: { $ne: true },
+    _id: { $nin: requestedUserIds },
+  });
+  const existingAdditionalUsers = Math.max(0, activeUsersBefore - activeBranches.length * plan.includedUsersPerBranch);
+  const projectedAdditionalUsers = Math.max(0, activeUsersBefore + users.length - projectedBranchCount * plan.includedUsersPerBranch);
+  const chargeableUserCount = Math.max(0, projectedAdditionalUsers - existingAdditionalUsers);
+  const chargeableUsers = [...users]
+    .sort((left, right) => billingEffectiveDate(left).getTime() - billingEffectiveDate(right).getTime())
+    .slice(0, chargeableUserCount);
 
   const lineItems: any[] = [];
   for (const branch of branches) {
@@ -392,9 +402,8 @@ export const createMidTermAdjustment = async (user: IUser, data: any = {}) => {
       paymentTermMonths: subscription.paymentTermMonths || 1,
     });
   }
-  for (const candidate of users) {
+  for (const candidate of chargeableUsers) {
     const branchId = userEntries.get(candidate._id.toString());
-    if (!branchId || !branchIds.has(branchId)) throw new Error('Each added user must specify one of the added branches');
     const result = prorateThroughTerm(plan.additionalUserPrice, billingEffectiveDate(candidate), subscription.currentPeriodEnd);
     if (result.amount <= 0) throw new Error('User effective date must be before the subscription term end');
     lineItems.push({
@@ -402,7 +411,7 @@ export const createMidTermAdjustment = async (user: IUser, data: any = {}) => {
       targetType: 'USER',
       targetId: candidate._id,
       userId: candidate._id,
-      branchId: new Types.ObjectId(branchId),
+      ...(branchId ? { branchId: new Types.ObjectId(branchId) } : {}),
       daysCharged: result.chargedDays,
       totalBillingDays: result.totalRelevantDays,
       monthlyUnitPrice: plan.additionalUserPrice,
@@ -418,7 +427,9 @@ export const createMidTermAdjustment = async (user: IUser, data: any = {}) => {
     });
   }
   await Branch.updateMany({ organizationId: orgId, _id: { $in: branches.map(branch => branch._id) } }, { $set: { status: 'INACTIVE', billingActivationPending: true } });
-  await User.updateMany({ organizationId: orgId, _id: { $in: users.map(candidate => candidate._id) } }, { $set: { status: 'INACTIVE', billingActivationPending: true } });
+  const chargeableUserIds = chargeableUsers.map(candidate => candidate._id);
+  if (branches.length === 0 && chargeableUsers.length === 0) throw new Error('No additional billing is required for these organization additions');
+  if (chargeableUserIds.length > 0) await User.updateMany({ organizationId: orgId, _id: { $in: chargeableUserIds } }, { $set: { status: 'INACTIVE', billingActivationPending: true } });
   const branchCharges = round(lineItems.filter(item => item.targetType === 'BRANCH').reduce((sum, item) => sum + item.amount, 0));
   const additionalUserCharges = round(lineItems.filter(item => item.targetType === 'USER').reduce((sum, item) => sum + item.amount, 0));
   const totalAmount = round(branchCharges + additionalUserCharges);

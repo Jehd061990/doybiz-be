@@ -14,6 +14,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import domainRoutes from './routes/domainRoutes';
 import subscriptionRoutes from './routes/subscriptionRoutes';
 import billingRoutes from './routes/billingRoutes';
+import userRoutes from './routes/userRoutes';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use('/api/billing/xendit/webhook', express.raw({ type: 'application/json', l
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/staff', staffRoutes);

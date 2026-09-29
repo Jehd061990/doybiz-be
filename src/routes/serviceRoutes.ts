@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import * as serviceController from '../controllers/serviceController';
-import { authenticateUser, authorizeRole } from '../middlewares/auth';
+import { authenticateUser, authorizeModule, authorizeRole } from '../middlewares/auth';
 
 const router = Router();
 
 router.use(authenticateUser);
+router.use(authorizeModule('APPOINTMENTS'));
 
 router.post('/', authorizeRole(['OWNER', 'MANAGER']), serviceController.create);
 router.get('/', authorizeRole(['OWNER', 'MANAGER', 'CASHIER']), serviceController.getAll);

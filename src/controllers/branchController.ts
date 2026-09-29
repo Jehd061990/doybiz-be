@@ -3,7 +3,7 @@ import * as branchService from '../services/branchService';
 
 export const getAll = async (req: Request, res: Response) => {
   try {
-    const branches = await branchService.getBranches(req.user!.organizationId.toString());
+    const branches = await branchService.getBranches(req.user!.organizationId.toString(), req.user!);
     res.json(branches);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch branches' });

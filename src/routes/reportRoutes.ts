@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import * as reportController from '../controllers/reportController';
-import { authenticateUser, authorizeRole } from '../middlewares/auth';
+import { authenticateUser, authorizeModule, authorizeRole } from '../middlewares/auth';
 
 const router = Router();
 const financialRoles = ['OWNER', 'MANAGER'];
 const operationalRoles = ['OWNER', 'MANAGER', 'CASHIER'];
 
 router.use(authenticateUser);
+router.use(authorizeModule('REPORTS'));
 
 router.get('/sales/summary', authorizeRole(financialRoles), reportController.salesSummary);
 router.get('/sales/daily', authorizeRole(financialRoles), reportController.dailySales);

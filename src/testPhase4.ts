@@ -5,6 +5,7 @@ import { registerOrganization } from './services/authService';
 import * as reportService from './services/reportService';
 import * as saleService from './services/saleService';
 import * as paymentService from './services/paymentService';
+import * as branchService from './services/branchService';
 import Organization from './models/Organization';
 import User from './models/User';
 import Branch from './models/Branch';
@@ -64,6 +65,8 @@ async function runTests() {
   assert.equal(paymentSummary.PARTIALLY_PAID.salesCount, 1);
 
   const manager = await User.create({ organizationId: orgOne.org._id, name: 'Branch Manager', email: `manager-${suffix}@example.com`, passwordHash: 'test', role: 'MANAGER', branchAccess: [branchA._id.toString()], status: 'ACTIVE' });
+  assert.deepEqual((await branchService.getBranches(orgOne.org._id.toString(), manager)).map(branch => branch._id.toString()), [branchA._id.toString()]);
+  assert.equal((await branchService.getBranches(orgOne.org._id.toString(), orgOne.user)).length, 2);
   const managerSummary = await reportService.getSalesSummary(manager, range);
   assert.equal(managerSummary.salesCount, 1);
   await assert.rejects(() => reportService.getSalesSummary(manager, { ...range, branchId: branchB._id.toString() }), /access to this branch/);

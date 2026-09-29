@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Organization from '../models/Organization';
-import User, { IUser } from '../models/User';
+import User, { VALID_MODULES } from '../models/User';
 
 export const registerOrganization = async (data: any) => {
   const { orgName, email, phone, address, userName, password, slug } = data;
@@ -23,6 +23,8 @@ export const registerOrganization = async (data: any) => {
     passwordHash,
     role: 'OWNER',
     branchAccess: 'ALL',
+    permissionPreset: 'OWNER',
+    modulePermissions: [...VALID_MODULES],
   });
 
   const token = jwt.sign(

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import * as customerController from '../controllers/customerController';
-import { authenticateUser, authorizeRole } from '../middlewares/auth';
+import { authenticateUser, authorizeModule, authorizeRole } from '../middlewares/auth';
 
 const router = Router();
 
 router.use(authenticateUser);
+router.use(authorizeModule('CUSTOMERS'));
 
 router.post('/', authorizeRole(['OWNER', 'MANAGER']), customerController.create);
 router.get('/', authorizeRole(['OWNER', 'MANAGER', 'CASHIER']), customerController.getAll);

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import * as subscriptionController from '../controllers/subscriptionController';
-import { authenticateUser, authorizeRole } from '../middlewares/auth';
+import { authenticateUser, authorizeModule, authorizeRole } from '../middlewares/auth';
 
 const router = Router();
 const organizationAdmins = ['OWNER', 'MANAGER'];
 
 router.use(authenticateUser);
+router.use(authorizeModule('BILLING'));
 router.get('/', authorizeRole(organizationAdmins), subscriptionController.getSubscription);
 router.get('/plan', authorizeRole(organizationAdmins), subscriptionController.getPlan);
 router.get('/estimate', authorizeRole(organizationAdmins), subscriptionController.getEstimate);

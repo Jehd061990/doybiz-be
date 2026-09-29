@@ -10,8 +10,8 @@ The active `STANDARD` plan is the single pricing source:
 
 - Setup fee: PHP 5,000, one time.
 - Active branch charge: PHP 1,499 per active branch per month.
-- Included users: 3 active users per branch.
-- Additional user: PHP 200 per active user above the per-branch allowance.
+- Included organization user seats: 3 per active branch.
+- Additional organization user: PHP 200 per active user above the organization's included-seat pool.
 - Currency: PHP.
 - Billing interval: monthly.
 
@@ -19,12 +19,12 @@ Examples:
 
 | Active branches/users | Monthly calculation | Total |
 | --- | --- | ---: |
-| 1 branch, 3 users | 1 x 1,499 + 0 x 200 | PHP 1,499 |
-| 1 branch, 4 users | 1 x 1,499 + 1 x 200 | PHP 1,699 |
-| 2 branches, 3 users each | 2 x 1,499 + 0 x 200 | PHP 2,998 |
-| Branch A 5 users, Branch B 3 users | 2 x 1,499 + 2 x 200 | PHP 3,398 |
+| 1 branch, 3 organization users | 1 x 1,499 + 0 x 200 | PHP 1,499 |
+| 1 branch, 4 organization users | 1 x 1,499 + 1 x 200 | PHP 1,699 |
+| 2 branches, 6 organization users | 2 x 1,499 + 0 x 200 | PHP 2,998 |
+| 2 branches, 7 organization users | 2 x 1,499 + 1 x 200 | PHP 3,198 |
 
-An active user with `branchAccess: 'ALL'` counts for every active branch. A user with an array of branch IDs counts only for those branches. Inactive users and inactive branches do not count.
+Users are organization-level records. Each active user counts once regardless of whether `branchAccess` contains one branch, several branches, or `ALL`. Included seats are pooled across the organization: `active branches x 3`. Inactive users and inactive or billing-pending branches do not count.
 
 ## Prepaid Subscription Terms
 
@@ -55,14 +55,18 @@ The PHP 5,000 setup fee remains one-time, is not prorated, and is not included i
 | GET | `/api/billing/:id` | Retrieve one invoice and payment totals | OWNER, MANAGER |
 | GET | `/api/billing/:id/payments` | Retrieve invoice payments | OWNER, MANAGER |
 | POST | `/api/billing/:id/payments` | Record a billing payment with an `idempotencyKey` | OWNER |
+| GET | `/api/users` | List organization users without password hashes | OWNER |
+| POST | `/api/users` | Create an organization user | OWNER |
+| GET | `/api/users/:id` | Retrieve one organization user | OWNER |
+| PATCH | `/api/users/:id` | Update role, branch access, module permissions, preset, or status | OWNER |
 
 ## Billing Rules
 
 Each organization receives one billing invoice per billing period. Branch additions and additional-user changes are consolidated into that invoice and do not create separate invoices. Setup invoices are created once during activation and are never included in subscription invoice totals. Subscription invoice generation is idempotent for the current period; a pending existing invoice is refreshed in place when current usage is recalculated, while paid and void invoices are immutable. This prevents user or branch changes from creating separate invoices.
 
-For an active prepaid term, a branch or additional user addition creates an organization-level `ADJUSTMENT` BillingRecord. The adjustment remains pending until paid. Target branches and users are explicitly `INACTIVE` with `billingActivationPending: true` while unpaid, and are set `ACTIVE` only after the adjustment payment completes. The original paid subscription invoice is never changed. Future payment gateways, including Xendit later, must collect against these organization-level records rather than create an invoice for each individual change.
+For an active prepaid term, a branch addition or an organization user addition above the projected included-seat pool creates an organization-level `ADJUSTMENT` BillingRecord. Each distinct user is charged at most once, independent of branch assignments. A chargeable added user remains `INACTIVE` with `billingActivationPending: true` while unpaid, and is set `ACTIVE` only after the adjustment payment completes. The original paid subscription invoice is never changed. Payment providers reconcile against these internal organization-level records rather than create separate invoices for individual branch or user changes.
 
-Additional-user charges are prorated based on the user's effective billing start date and the remaining time in the billing period. `User.billingEffectiveAt` is used when present; otherwise the existing `User.createdAt` is used. The calculation uses the actual subscription period dates: `monthlyUnitPrice * daysCharged / totalBillingDays`, rounded to two decimal places. Each prorated user line stores a user ID, branch, charged days, total period days, monthly unit price, prorated amount, effective date, and period end date without storing personal profile data.
+Additional-user charges are prorated based on the user's effective billing start date and the remaining coverage. `User.billingEffectiveAt` is used when present; otherwise `User.createdAt` is used. Subscription estimates prorate the monthly price by charged days over the actual period. Mid-term adjustment invoices use the existing calendar-month daily proration through the prepaid term end. Each user line stores the user ID and proration metadata; branch assignment is optional and never determines user count or charge multiplicity.
 
 Billing payment requests require a client-generated `idempotencyKey`; replaying the same key returns the original payment instead of creating another financial record. Paid and void records reject further payments and are not physically deleted. Invoice numbers use `INV-YYYY-000001` with an atomic yearly counter.
 
@@ -82,7 +86,7 @@ Branch deactivation/removal does not automatically generate a refund, historical
 
 All billing services derive `organizationId` from `req.user.organizationId`. Billing and subscription records are queried with that organization ID, preventing cross-organization access. OWNER and MANAGER can view subscription/estimate/history. Only OWNER can activate, cancel, generate invoices, or record billing payments. CASHIER has no organization-level billing access.
 
-Existing owner protection was not rebuilt in Phase 6. The master plan records a prior gap around last-owner deletion/demotion; Phase 6 leaves that unrelated user-management behavior unchanged.
+User management is organization-scoped and owner-only. Branch IDs and module names are validated before updates; the last active owner cannot be demoted or deactivated. Permission presets supply defaults, while explicit permissions remain customizable unless `applyPreset: true` is requested. The available modules are `POS`, `SALES`, `APPOINTMENTS`, `CUSTOMERS`, `REPORTS`, `STAFF`, and `BILLING`. Protected feature routes enforce the user's role and module permissions, and service-level branch checks enforce branch assignments.
 
 ## Subscription Access
 
@@ -92,8 +96,8 @@ Existing owner protection was not rebuilt in Phase 6. The master plan records a 
 
 - `npm run build` passes.
 - `npm run test:phase6` passes against the configured MongoDB instance.
-- Coverage includes 1/3/6/12-month prepaid terms, upfront term totals, no duplicate term invoice, the two-branch PHP 3,398 example, full-period/mid-period/near-end branch additions, 30-day and 31-day periods, multiple consolidated branches, full-period/mid-period/near-end additional users, multiple consolidated user additions, inactive-user exclusion, add-then-remove behavior, setup fee idempotency, one invoice per period, pending adjustment refresh, unpaid activation blocking, paid adjustment activation, renewal inclusion, partial/full payments, idempotency-key replay, paid/void invoice protection, lifecycle guards, cancellation, and cross-organization isolation.
+- Coverage includes 1/3/6/12-month prepaid terms, organization-level seat pools, multi-branch users counted once, the six-seat/two-branch and seventh-user cases, inactive-user exclusion, branch additions increasing included seats, user proration, prepaid user adjustments, pending activation and payment activation, paid-invoice immutability, Xendit payment request and webhook reconciliation, setup fee idempotency, partial/full payments, lifecycle guards, cancellation, and cross-organization isolation.
 
 ## Limitations
 
-No PayMongo, GCash, Maya, Stripe, bank verification, webhooks, card tokenization, automatic email/SMS notifications, branch usage credits/refunds, automatic renewal execution, coupons, tax/accounting, or frontend billing UI is implemented. Xendit support is Stage 1 only: it creates an external payment request against the organization's existing consolidated BillingRecord or prepaid adjustment BillingRecord, does not mark the internal invoice as paid, and does not process provider webhooks yet. Future Xendit integration will attach provider confirmations to the same internal invoice and must not create separate payment invoices for individual branch or user changes.
+No PayMongo, GCash, Maya, Stripe, card tokenization, automatic email/SMS notifications, branch usage credits/refunds, automatic renewal execution, coupons, tax/accounting, or frontend billing UI is implemented. Xendit Stage 1 creates an external payment request against the organization's existing BillingRecord. Stage 2 securely verifies webhook tokens and reconciles matching, amount- and currency-validated provider evidence into internal payment and billing records. Recurring or renewal billing is not implemented here.

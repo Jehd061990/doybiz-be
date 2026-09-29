@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import * as billingController from '../controllers/billingController';
-import { authenticateUser, authorizeRole } from '../middlewares/auth';
+import { authenticateUser, authorizeModule, authorizeRole } from '../middlewares/auth';
 
 const router = Router();
 const billingReaders = ['OWNER', 'MANAGER'];
 
 router.post('/xendit/webhook', billingController.handleXenditWebhook);
 router.use(authenticateUser);
+router.use(authorizeModule('BILLING'));
 router.get('/', authorizeRole(billingReaders), billingController.getAll);
 router.post('/generate', authorizeRole(['OWNER']), billingController.generate);
 router.post('/adjustments', authorizeRole(['OWNER']), billingController.createAdjustment);

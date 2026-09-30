@@ -79,9 +79,22 @@ export const updateCustomer = async (id: string, data: any, organizationId: stri
   if (!Types.ObjectId.isValid(id)) {
     throw new Error('Invalid customer ID format');
   }
+
+  // Only allow customer-owned fields to be updated. In particular, never
+  // accept organizationId from the request body because that would allow a
+  // customer document to be reassigned across tenants.
+  const allowedFields = ['firstName', 'lastName', 'phone', 'email', 'address', 'notes', 'status'];
+  const updates: Record<string, any> = {};
+
+  for (const field of allowedFields) {
+    if (data[field] !== undefined) {
+      updates[field] = data[field];
+    }
+  }
+
   const customer = await Customer.findOneAndUpdate(
     { _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) },
-    { $set: data },
+    { $set: updates },
     { new: true, runValidators: true }
   );
   if (!customer) {
@@ -89,7 +102,6 @@ export const updateCustomer = async (id: string, data: any, organizationId: stri
   }
   return customer;
 };
-
 export const deleteCustomer = async (id: string, organizationId: string) => {
   if (!Types.ObjectId.isValid(id)) {
     throw new Error('Invalid customer ID format');

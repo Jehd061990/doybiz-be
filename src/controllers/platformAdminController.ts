@@ -23,6 +23,14 @@ export const createOrganization = async (req: Request, res: Response) => {
   }
 };
 
+export const updateOrganization = async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, organization: await platformAdminService.updateOrganization(req.params.organizationId, req.body) });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
 export const listBranches = async (req: Request, res: Response) => {
   try {
     res.json({ success: true, branches: await platformAdminService.listBranches(req.params.organizationId) });

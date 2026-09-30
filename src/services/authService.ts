@@ -3,6 +3,45 @@ import jwt from 'jsonwebtoken';
 import Organization from '../models/Organization';
 import User, { VALID_MODULES } from '../models/User';
 
+const jwtSecret = () => process.env.JWT_SECRET || 'secret';
+
+export interface PlatformAdminIdentity {
+  _id: 'platform-admin';
+  name: string;
+  email: string;
+  role: 'PLATFORM_ADMIN';
+  scope: 'PLATFORM_ADMIN';
+  status: 'ACTIVE';
+}
+
+const getPlatformAdminConfig = () => ({
+  enabled: process.env.SUPER_ADMIN_ENABLED !== 'false',
+  email: (process.env.SUPER_ADMIN_EMAIL || '').toLowerCase().trim(),
+  passwordHash: process.env.SUPER_ADMIN_PASSWORD_HASH || '',
+});
+
+export const loginPlatformAdmin = async (email: string, password: string): Promise<{ user: PlatformAdminIdentity; token: string } | null> => {
+  const config = getPlatformAdminConfig();
+  if (!config.enabled || !config.email || !config.passwordHash || email !== config.email) return null;
+  const isMatch = await bcrypt.compare(password, config.passwordHash);
+  if (!isMatch) return null;
+
+  const user: PlatformAdminIdentity = {
+    _id: 'platform-admin',
+    name: 'Super Admin',
+    email: config.email,
+    role: 'PLATFORM_ADMIN',
+    scope: 'PLATFORM_ADMIN',
+    status: 'ACTIVE',
+  };
+  const token = jwt.sign(
+    { scope: 'PLATFORM_ADMIN', role: 'PLATFORM_ADMIN', email: config.email },
+    jwtSecret(),
+    { expiresIn: '7d' },
+  );
+  return { user, token };
+};
+
 export const registerOrganization = async (data: any) => {
   const { orgName, email, phone, address, userName, password, slug } = data;
   
@@ -28,8 +67,8 @@ export const registerOrganization = async (data: any) => {
   });
 
   const token = jwt.sign(
-    { userId: user._id, organizationId: org._id, role: user.role },
-    process.env.JWT_SECRET || 'secret',
+    { userId: user._id, organizationId: org._id, role: user.role, scope: 'ORGANIZATION' },
+    jwtSecret(),
     { expiresIn: '7d' }
   );
   
@@ -42,6 +81,9 @@ export const login = async (data: any) => {
   if (!normalizedEmail || !password) {
     throw new Error('Email and password are required');
   }
+
+  const platformAdmin = await loginPlatformAdmin(normalizedEmail, password);
+  if (platformAdmin) return platformAdmin;
 
   const query: any = { email: normalizedEmail };
   let user;
@@ -66,8 +108,8 @@ export const login = async (data: any) => {
   }
 
   const token = jwt.sign(
-    { userId: user._id, organizationId: user.organizationId, role: user.role },
-    process.env.JWT_SECRET || 'secret',
+    { userId: user._id, organizationId: user.organizationId, role: user.role, scope: 'ORGANIZATION' },
+    jwtSecret(),
     { expiresIn: '7d' }
   );
 

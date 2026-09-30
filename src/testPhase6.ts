@@ -503,6 +503,8 @@ async function runTests() {
   await assert.rejects(() => login({ email: duplicateLoginEmail, password: duplicateLoginAccount.password }), /organizationId is required when email is associated with multiple organizations/);
   const firstOrgLogin = await login({ email: duplicateLoginEmail, password: duplicateLoginAccount.password, organizationId: first.org._id.toString() });
   const secondOrgLogin = await login({ email: duplicateLoginEmail, password: duplicateLoginAccount.password, organizationId: second.org._id.toString() });
+  assert.notEqual(firstOrgLogin.user.role, 'PLATFORM_ADMIN');
+  assert.notEqual(secondOrgLogin.user.role, 'PLATFORM_ADMIN');
   assert.equal(firstOrgLogin.user.organizationId.toString(), first.org._id.toString());
   assert.equal(secondOrgLogin.user.organizationId.toString(), second.org._id.toString());
 

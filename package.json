@@ -15,7 +15,8 @@
     "test:phase3": "ts-node src/testPhase3.ts",
     "test:phase4": "ts-node src/testPhase4.ts",
     "test:phase5": "ts-node src/testPhase5.ts",
-    "test:phase6": "ts-node src/testPhase6.ts"
+    "test:phase6": "ts-node src/testPhase6.ts",
+    "test:phase19": "ts-node src/testPhase19.ts"
   },
   "dependencies": {
     "axios": "^1.20.0",

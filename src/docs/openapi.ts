@@ -14,6 +14,7 @@ export const openApiSpec = {
     },
     schemas: {
       Error: { type: 'object', properties: { success: { type: 'boolean' }, message: { type: 'string' } } },
+      Service: { type: 'object', properties: { id:{type:'string'}, name:{type:'string'}, code:{type:'string'}, category:{type:'string'}, description:{type:'string'}, price:{type:'number'}, durationMinutes:{type:'integer'}, imageUrl:{type:'string',format:'uri'}, status:{type:'string',enum:['ACTIVE','INACTIVE']}, branchId:{type:'string'} } },
     },
   },
   paths: {
@@ -43,6 +44,20 @@ export const openApiSpec = {
     '/staff/{staffId}/services/{serviceId}': { post:{tags:['Staff'],summary:'Assign service to staff',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/staffId'},{'$ref':'#/components/parameters/serviceId'}],responses:{'200':{description:'Assigned'}}}, delete:{tags:['Staff'],summary:'Unassign service from staff',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/staffId'},{'$ref':'#/components/parameters/serviceId'}],responses:{'200':{description:'Unassigned'}}} },
     '/services': { get:{tags:['Services'],summary:'List services',security:[{bearerAuth:[]}],responses:{'200':{description:'Services'}}}, post:{tags:['Services'],summary:'Create service',security:[{bearerAuth:[]}],responses:{'201':{description:'Created'}}} },
     '/services/{id}': { get:{tags:['Services'],summary:'Get service',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'Service'}}}, put:{tags:['Services'],summary:'Update service',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'Updated'}}}, delete:{tags:['Services'],summary:'Delete service',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'Deleted'}}} },
+    '/services': {
+      get: { tags:['Services'], summary:'List services available to the authenticated organization/branch', security:[{bearerAuth:[]}], parameters:[
+        {name:'branchId',in:'query',schema:{type:'string'}},{name:'search',in:'query',schema:{type:'string'}},{name:'category',in:'query',schema:{type:'string'}},{name:'status',in:'query',schema:{type:'string',enum:['ACTIVE','INACTIVE']}},{name:'page',in:'query',schema:{type:'integer',minimum:1}},{name:'limit',in:'query',schema:{type:'integer',minimum:1,maximum:100}}
+      ], responses:{'200':{description:'Services'},'403':{description:'Module or role access denied'}} },
+      post: { tags:['Services'], summary:'Create service with optional optimized Cloudinary image', security:[{bearerAuth:[]}], requestBody:{required:true,content:{'application/json':{schema:{type:'object',required:['name','price','durationMinutes'],properties:{name:{type:'string'},code:{type:'string'},category:{type:'string'},description:{type:'string'},price:{type:'number',minimum:0},durationMinutes:{type:'integer',minimum:1},branchId:{type:'string'},status:{type:'string',enum:['ACTIVE','INACTIVE']},imageData:{type:'string',description:'Optimized image data URI, max 300 KB after client-side compression'}}}}}}, responses:{'201':{description:'Service created'},'400':{description:'Validation error'}} }
+    },
+    '/services/{id}': {
+      get: { tags:['Services'], summary:'Get service', security:[{bearerAuth:[]}], parameters:[{'$ref':'#/components/parameters/id'}], responses:{'200':{description:'Service'},'404':{description:'Service not found'}} },
+      put: { tags:['Services'], summary:'Update service and optionally replace image', security:[{bearerAuth:[]}], parameters:[{'$ref':'#/components/parameters/id'}], requestBody:{required:true,content:{'application/json':{schema:{type:'object',properties:{name:{type:'string'},code:{type:'string'},category:{type:'string'},description:{type:'string'},price:{type:'number'},durationMinutes:{type:'integer'},branchId:{type:'string'},status:{type:'string'},imageData:{type:'string'}}}}}}, responses:{'200':{description:'Service updated'}} },
+      delete: { tags:['Services'], summary:'Deactivate service', security:[{bearerAuth:[]}], parameters:[{'$ref':'#/components/parameters/id'}], responses:{'200':{description:'Service deactivated'}} }
+    },
+    '/services/{id}/image': {
+      delete: { tags:['Services'], summary:'Remove service image', security:[{bearerAuth:[]}], parameters:[{'$ref':'#/components/parameters/id'}], responses:{'200':{description:'Image removed'}} }
+    },
     '/reservations': { get:{tags:['Reservations'],summary:'List reservations',security:[{bearerAuth:[]}],responses:{'200':{description:'Reservations'}}}, post:{tags:['Reservations'],summary:'Create reservation',security:[{bearerAuth:[]}],responses:{'201':{description:'Created'}}} },
     '/reservations/{id}': { get:{tags:['Reservations'],summary:'Get reservation',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'Reservation'}}}, put:{tags:['Reservations'],summary:'Update reservation',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'Updated'}}}, delete:{tags:['Reservations'],summary:'Delete reservation',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'Deleted'}}} },
     '/public/site': { get:{tags:['Public'],summary:'Get public tenant site',responses:{'200':{description:'Site'}}} },

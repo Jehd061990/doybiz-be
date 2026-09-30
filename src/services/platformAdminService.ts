@@ -27,7 +27,8 @@ export const createOrganization = async (data: any) => {
   const includedBranchCount = parseNonNegativeInteger(data.includedBranchCount, 'includedBranchCount', 1);
   const includedUserSeats = parseNonNegativeInteger(data.includedUserSeats, 'includedUserSeats', includedBranchCount * 3);
   const additionalUserSeatsPerBranch = parseNonNegativeInteger(data.additionalUserSeatsPerBranch, 'additionalUserSeatsPerBranch', 3);
-  return Organization.create({ name, email, phone, address, includedBranchCount, includedUserSeats, additionalUserSeatsPerBranch, ...(slug ? { slug } : {}) });
+  const additionalUserSeats = parseNonNegativeInteger(data.additionalUserSeats, 'additionalUserSeats', 0);
+  return Organization.create({ name, email, phone, address, includedBranchCount, includedUserSeats, additionalUserSeatsPerBranch, additionalUserSeats, ...(slug ? { slug } : {}) });
 };
 
 export const updateOrganization = async (organizationId: string, data: any) => {
@@ -47,6 +48,7 @@ export const updateOrganization = async (organizationId: string, data: any) => {
   const includedBranchCount = parseNonNegativeInteger(data.includedBranchCount, 'includedBranchCount', currentProvisioning.includedBranchCount);
   const includedUserSeats = parseNonNegativeInteger(data.includedUserSeats, 'includedUserSeats', currentProvisioning.includedUserSeats);
   const additionalUserSeatsPerBranch = parseNonNegativeInteger(data.additionalUserSeatsPerBranch, 'additionalUserSeatsPerBranch', currentProvisioning.additionalUserSeatsPerBranch);
+  const additionalUserSeats = parseNonNegativeInteger(data.additionalUserSeats, 'additionalUserSeats', currentProvisioning.additionalUserSeats);
 
   organization.name = name;
   organization.email = email;
@@ -57,6 +59,7 @@ export const updateOrganization = async (organizationId: string, data: any) => {
   organization.includedBranchCount = includedBranchCount;
   organization.includedUserSeats = includedUserSeats;
   organization.additionalUserSeatsPerBranch = additionalUserSeatsPerBranch;
+  organization.additionalUserSeats = additionalUserSeats;
   await organization.save();
   return organization;
 };

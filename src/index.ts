@@ -23,7 +23,7 @@ dotenv.config();
 
 const app = express();
 app.use('/api/billing/xendit/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 app.get('/api-docs/openapi.json', (_req, res) => {
   res.json(openApiSpec);

@@ -92,10 +92,10 @@ export const calculateEstimate = async (user: IUser, period?: BillingPeriod) => 
   if (!plan) throw new Error('Active subscription plan is unavailable');
 
   const activeOrganizationUsers = users.length;
-  const organization = await Organization.findById(organizationId(user)).select('includedBranchCount includedUserSeats additionalUserSeatsPerBranch');
+  const organization = await Organization.findById(organizationId(user)).select('includedBranchCount includedUserSeats additionalUserSeatsPerBranch additionalUserSeats');
   if (!organization) throw new Error('Organization not found');
   const provisioning = getProvisioning(organization);
-  const includedUserSeats = provisioning.includedUserSeats + Math.max(0, branches.length - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch;
+  const includedUserSeats = provisioning.includedUserSeats + Math.max(0, branches.length - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch + provisioning.additionalUserSeats;
   const additionalUserCount = Math.max(0, activeOrganizationUsers - includedUserSeats);
   const totalDays = period ? billingDays(period) : undefined;
   const chargeableUsers = [...users]
@@ -377,11 +377,11 @@ export const createMidTermAdjustment = async (user: IUser, data: any = {}) => {
     billingActivationPending: { $ne: true },
     _id: { $nin: requestedUserIds },
   });
-  const organization = await Organization.findById(orgId).select('includedBranchCount includedUserSeats additionalUserSeatsPerBranch');
+  const organization = await Organization.findById(orgId).select('includedBranchCount includedUserSeats additionalUserSeatsPerBranch additionalUserSeats');
   if (!organization) throw new Error('Organization not found');
   const provisioning = getProvisioning(organization);
-  const includedSeatsBefore = provisioning.includedUserSeats + Math.max(0, activeBranches.length - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch;
-  const includedSeatsAfter = provisioning.includedUserSeats + Math.max(0, projectedBranchCount - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch;
+  const includedSeatsBefore = provisioning.includedUserSeats + Math.max(0, activeBranches.length - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch + provisioning.additionalUserSeats;
+  const includedSeatsAfter = provisioning.includedUserSeats + Math.max(0, projectedBranchCount - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch + provisioning.additionalUserSeats;
   const existingAdditionalUsers = Math.max(0, activeUsersBefore - includedSeatsBefore);
   const projectedAdditionalUsers = Math.max(0, activeUsersBefore + users.length - includedSeatsAfter);
   const chargeableUserCount = Math.max(0, projectedAdditionalUsers - existingAdditionalUsers);

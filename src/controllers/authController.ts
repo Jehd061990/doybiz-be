@@ -17,6 +17,8 @@ const publicUser = (user: IUser) => ({
   updatedAt: user.updatedAt,
 });
 
+const publicPlatformAdmin = (user: authService.PlatformAdminIdentity) => user;
+
 const publicOrganization = (organization: IOrganization) => ({
   _id: organization._id.toString(),
   name: organization.name,
@@ -45,11 +47,15 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { user, token } = await authService.login(req.body);
+    const result = await authService.login(req.body);
+    if ('scope' in result.user && result.user.scope === 'PLATFORM_ADMIN') {
+      res.status(200).json({ success: true, user: publicPlatformAdmin(result.user), token: result.token });
+      return;
+    }
     res.status(200).json({
       success: true,
-      user: publicUser(user),
-      token,
+      user: publicUser(result.user as IUser),
+      token: result.token,
     });
   } catch (error) {
     res.status(400).json({ success: false, message: (error as Error).message });

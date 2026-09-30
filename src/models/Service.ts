@@ -9,6 +9,7 @@ export interface IService extends Document {
   description?: string;
   price: number;
   durationMinutes: number;
+  imageSource: 'CLOUDINARY' | 'EXTERNAL_URL' | 'NONE';
   imageUrl?: string;
   imagePublicId?: string;
   status: 'ACTIVE' | 'INACTIVE';
@@ -25,6 +26,7 @@ const ServiceSchema: Schema = new Schema({
   description: { type: String, trim: true },
   price: { type: Number, required: true, min: 0 },
   durationMinutes: { type: Number, required: true, min: 1 },
+  imageSource: { type: String, enum: ['CLOUDINARY', 'EXTERNAL_URL', 'NONE'], default: 'NONE', index: true },
   imageUrl: { type: String, trim: true },
   imagePublicId: { type: String, trim: true },
   status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE', index: true },

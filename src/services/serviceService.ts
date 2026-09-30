@@ -37,10 +37,10 @@ const validateCore = (data: any) => {
 export const createService = async (data: any, organizationId: string, user: IUser) => {
   const core = validateCore(data);
   const branchId = await validateBranch(data.branchId, organizationId, user);
-  const requestedSource = data.imageSource === 'URL' ? 'EXTERNAL_URL' : data.imageSource === 'UPLOAD' ? 'CLOUDINARY' : data.imageSource === 'NONE' ? 'NONE' : undefined;
+  const requestedSource = data.imageSource === 'URL' ? 'EXTERNAL_URL' : data.imageSource === 'UPLOAD' ? 'CLOUDINARY' : data.imageSource === 'NONE' ? 'NONE' : data.imageData ? 'CLOUDINARY' : data.imageUrl ? 'EXTERNAL_URL' : 'NONE';
   if (requestedSource === 'EXTERNAL_URL' && !data.imageUrl) throw new Error('Image URL is required when using an image URL');
   if (requestedSource === 'CLOUDINARY' && !data.imageData) throw new Error('Image data is required when uploading an image');
-  if (requestedSource === undefined && (data.imageData || data.imageUrl)) throw new Error('Choose an image source for the supplied image');
+
   const service = await Service.create({ organizationId: new Types.ObjectId(organizationId), branchId, name: core.name, code: typeof data.code === 'string' ? data.code.trim() || undefined : undefined, category: typeof data.category === 'string' ? data.category.trim() || undefined : undefined, description: typeof data.description === 'string' ? data.description.trim() || undefined : undefined, price: core.price, durationMinutes: core.durationMinutes, status: validateStatus(data.status), imageSource: requestedSource || 'NONE' });
   try {
     if (requestedSource === 'CLOUDINARY') {
@@ -101,8 +101,8 @@ export const updateService = async (id: string, data: any, organizationId: strin
   for (const key of ['code', 'category', 'description']) if (next[key] !== undefined) next[key] = typeof next[key] === 'string' ? next[key].trim() || undefined : undefined;
   if (next.status !== undefined) next.status = validateStatus(next.status);
   let oldPublicId: string | undefined;
-  const hasImageSource = data.imageSource !== undefined;
-  const requestedSource = data.imageSource === 'URL' ? 'EXTERNAL_URL' : data.imageSource === 'UPLOAD' ? 'CLOUDINARY' : data.imageSource === 'NONE' ? 'NONE' : undefined;
+  const hasImageSource = data.imageSource !== undefined || data.imageData !== undefined || data.imageUrl !== undefined;
+  const requestedSource = data.imageSource === 'URL' ? 'EXTERNAL_URL' : data.imageSource === 'UPLOAD' ? 'CLOUDINARY' : data.imageSource === 'NONE' ? 'NONE' : data.imageData ? 'CLOUDINARY' : data.imageUrl ? 'EXTERNAL_URL' : undefined;
   if (hasImageSource) {
     if (!requestedSource) throw new Error('Image source must be UPLOAD, URL, or NONE');
     if (requestedSource === 'CLOUDINARY') {

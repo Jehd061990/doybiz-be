@@ -14,13 +14,6 @@ const validateImageUrl = (value: unknown) => {
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Image URL must use http:// or https://');
   return url.toString();
 };
-const validateImageSource = (value: unknown): 'CLOUDINARY' | 'EXTERNAL_URL' | 'NONE' => {
-  if (value === undefined) return 'NONE';
-  if (!IMAGE_SOURCES.has(String(value))) throw new Error('Image source must be UPLOAD, URL, or NONE');
-  if (value === 'CLOUDINARY') return 'CLOUDINARY';
-  if (value === 'EXTERNAL_URL') return 'EXTERNAL_URL';
-  return 'NONE';
-};
 const sanitizeUpdate = (data: Record<string, unknown>) => Object.fromEntries(Object.entries(data).filter(([key]) => ALLOWED_UPDATE_FIELDS.has(key)));
 const validateStatus = (value: unknown): 'ACTIVE' | 'INACTIVE' => { if (value === undefined) return 'ACTIVE'; if (value !== 'ACTIVE' && value !== 'INACTIVE') throw new Error('Status must be ACTIVE or INACTIVE'); return value; };
 

@@ -505,6 +505,9 @@ async function runTests() {
   const secondOrgLogin = await login({ email: duplicateLoginEmail, password: duplicateLoginAccount.password, organizationId: second.org._id.toString() });
   assert.notEqual(firstOrgLogin.user.role, 'PLATFORM_ADMIN');
   assert.notEqual(secondOrgLogin.user.role, 'PLATFORM_ADMIN');
+  if (!('organizationId' in firstOrgLogin.user) || !('organizationId' in secondOrgLogin.user)) {
+    throw new Error('Expected tenant login responses to include organizationId');
+  }
   assert.equal(firstOrgLogin.user.organizationId.toString(), first.org._id.toString());
   assert.equal(secondOrgLogin.user.organizationId.toString(), second.org._id.toString());
 

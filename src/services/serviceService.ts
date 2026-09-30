@@ -6,6 +6,21 @@ import { IUser } from '../models/User';
 import { deleteServiceImage, uploadServiceImage } from './cloudinaryService';
 
 const ALLOWED_UPDATE_FIELDS = new Set(['branchId', 'name', 'code', 'category', 'description', 'price', 'durationMinutes', 'status']);
+const IMAGE_SOURCES = new Set(['CLOUDINARY', 'EXTERNAL_URL', 'NONE']);
+const validateImageUrl = (value: unknown) => {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('Image URL is required when using an external image URL');
+  let url: URL;
+  try { url = new URL(value.trim()); } catch { throw new Error('Image URL must be a valid URL'); }
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Image URL must use http:// or https://');
+  return url.toString();
+};
+const validateImageSource = (value: unknown): 'CLOUDINARY' | 'EXTERNAL_URL' | 'NONE' => {
+  if (value === undefined) return 'NONE';
+  if (!IMAGE_SOURCES.has(String(value))) throw new Error('Image source must be UPLOAD, URL, or NONE');
+  if (value === 'CLOUDINARY') return 'CLOUDINARY';
+  if (value === 'EXTERNAL_URL') return 'EXTERNAL_URL';
+  return 'NONE';
+};
 const sanitizeUpdate = (data: Record<string, unknown>) => Object.fromEntries(Object.entries(data).filter(([key]) => ALLOWED_UPDATE_FIELDS.has(key)));
 const validateStatus = (value: unknown): 'ACTIVE' | 'INACTIVE' => { if (value === undefined) return 'ACTIVE'; if (value !== 'ACTIVE' && value !== 'INACTIVE') throw new Error('Status must be ACTIVE or INACTIVE'); return value; };
 
@@ -30,9 +45,19 @@ const validateCore = (data: any) => {
 export const createService = async (data: any, organizationId: string, user: IUser) => {
   const core = validateCore(data);
   const branchId = await validateBranch(data.branchId, organizationId, user);
-  const service = await Service.create({ organizationId: new Types.ObjectId(organizationId), branchId, name: core.name, code: typeof data.code === 'string' ? data.code.trim() || undefined : undefined, category: typeof data.category === 'string' ? data.category.trim() || undefined : undefined, description: typeof data.description === 'string' ? data.description.trim() || undefined : undefined, price: core.price, durationMinutes: core.durationMinutes, status: validateStatus(data.status) });
+  const requestedSource = data.imageSource === 'URL' ? 'EXTERNAL_URL' : data.imageSource === 'UPLOAD' ? 'CLOUDINARY' : data.imageSource === 'NONE' ? 'NONE' : undefined;
+  if (requestedSource === 'EXTERNAL_URL' && !data.imageUrl) throw new Error('Image URL is required when using an image URL');
+  if (requestedSource === 'CLOUDINARY' && !data.imageData) throw new Error('Image data is required when uploading an image');
+  if (requestedSource === undefined && (data.imageData || data.imageUrl)) throw new Error('Choose an image source for the supplied image');
+  const service = await Service.create({ organizationId: new Types.ObjectId(organizationId), branchId, name: core.name, code: typeof data.code === 'string' ? data.code.trim() || undefined : undefined, category: typeof data.category === 'string' ? data.category.trim() || undefined : undefined, description: typeof data.description === 'string' ? data.description.trim() || undefined : undefined, price: core.price, durationMinutes: core.durationMinutes, status: validateStatus(data.status), imageSource: requestedSource || 'NONE' });
   try {
-    if (data.imageData) { const uploaded = await uploadServiceImage(data.imageData, organizationId, service._id.toString()); service.imageUrl = uploaded.secureUrl; service.imagePublicId = uploaded.publicId; await service.save(); }
+    if (requestedSource === 'CLOUDINARY') {
+      const uploaded = await uploadServiceImage(data.imageData, organizationId, service._id.toString());
+      service.imageUrl = uploaded.secureUrl; service.imagePublicId = uploaded.publicId;
+      await service.save();
+    } else if (requestedSource === 'EXTERNAL_URL') {
+      service.imageUrl = validateImageUrl(data.imageUrl); service.imagePublicId = undefined; await service.save();
+    }
   } catch (error) { await Service.deleteOne({ _id: service._id, organizationId: service.organizationId }); throw error; }
   return service;
 };
@@ -84,7 +109,23 @@ export const updateService = async (id: string, data: any, organizationId: strin
   for (const key of ['code', 'category', 'description']) if (next[key] !== undefined) next[key] = typeof next[key] === 'string' ? next[key].trim() || undefined : undefined;
   if (next.status !== undefined) next.status = validateStatus(next.status);
   let oldPublicId: string | undefined;
-  if (typeof data.imageData === 'string' && data.imageData) { const uploaded = await uploadServiceImage(data.imageData, organizationId, id); next.imageUrl = uploaded.secureUrl; next.imagePublicId = uploaded.publicId; oldPublicId = existing.imagePublicId; }
+  const hasImageSource = data.imageSource !== undefined;
+  const requestedSource = data.imageSource === 'URL' ? 'EXTERNAL_URL' : data.imageSource === 'UPLOAD' ? 'CLOUDINARY' : data.imageSource === 'NONE' ? 'NONE' : undefined;
+  if (hasImageSource) {
+    if (!requestedSource) throw new Error('Image source must be UPLOAD, URL, or NONE');
+    if (requestedSource === 'CLOUDINARY') {
+      if (typeof data.imageData !== 'string' || !data.imageData) throw new Error('Image data is required when uploading an image');
+      const uploaded = await uploadServiceImage(data.imageData, organizationId, id);
+      next.imageSource = 'CLOUDINARY'; next.imageUrl = uploaded.secureUrl; next.imagePublicId = uploaded.publicId;
+      oldPublicId = existing.imagePublicId;
+    } else if (requestedSource === 'EXTERNAL_URL') {
+      next.imageSource = 'EXTERNAL_URL'; next.imageUrl = validateImageUrl(data.imageUrl); next.imagePublicId = undefined;
+      oldPublicId = existing.imagePublicId;
+    } else {
+      next.imageSource = 'NONE'; next.imageUrl = undefined; next.imagePublicId = undefined;
+      oldPublicId = existing.imagePublicId;
+    }
+  }
   const service = await Service.findOneAndUpdate({ _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) }, { $set: next }, { new: true, runValidators: true }).populate('branchId', 'name address');
   if (oldPublicId && oldPublicId !== service?.imagePublicId) { try { await deleteServiceImage(oldPublicId); } catch (error) { console.error('Failed to delete old service image', error); } }
   return service;
@@ -100,6 +141,6 @@ export const deleteService = async (id: string, organizationId: string, user: IU
 export const removeServiceImage = async (id: string, organizationId: string, user: IUser) => {
   const service = await getServiceById(id, organizationId, user);
   if (service.imagePublicId) await deleteServiceImage(service.imagePublicId);
-  service.imageUrl = undefined; service.imagePublicId = undefined; await service.save();
+  service.imageSource = 'NONE'; service.imageUrl = undefined; service.imagePublicId = undefined; await service.save();
   return service;
 };

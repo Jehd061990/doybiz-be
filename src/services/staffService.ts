@@ -133,29 +133,40 @@ export const updateStaff = async (id: string, data: any, organizationId: string,
     throw new Error('You do not have access to this staff member branch');
   }
 
-  if (data.branchId) {
-    if (!Types.ObjectId.isValid(data.branchId)) {
+  // Only allow staff-owned fields to be updated. organizationId and internal
+  // document fields must never be accepted from the request body.
+  const allowedFields = ['branchId', 'firstName', 'lastName', 'phone', 'email', 'position', 'status'];
+  const updates: Record<string, any> = {};
+
+  for (const field of allowedFields) {
+    if (data[field] !== undefined) {
+      updates[field] = data[field];
+    }
+  }
+
+  if (updates.branchId !== undefined) {
+    if (!Types.ObjectId.isValid(updates.branchId)) {
       throw new Error('Invalid branch ID format');
     }
-    if (!canAccessBranch(user, data.branchId)) {
+    if (!canAccessBranch(user, updates.branchId)) {
       throw new Error('You do not have access to the target branch');
     }
-    const targetBranch = await Branch.findOne({ _id: new Types.ObjectId(data.branchId), organizationId: new Types.ObjectId(organizationId) });
+    const targetBranch = await Branch.findOne({
+      _id: new Types.ObjectId(updates.branchId),
+      organizationId: new Types.ObjectId(organizationId),
+    });
     if (!targetBranch) {
       throw new Error('Target branch not found in organization');
     }
-    data.branchId = new Types.ObjectId(data.branchId);
+    updates.branchId = new Types.ObjectId(updates.branchId);
   }
 
-  const staff = await Staff.findOneAndUpdate(
+  return await Staff.findOneAndUpdate(
     { _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) },
-    { $set: data },
+    { $set: updates },
     { new: true, runValidators: true }
   ).populate('branchId', 'name address');
-
-  return staff;
 };
-
 export const deleteStaff = async (id: string, organizationId: string, user: IUser) => {
   if (!Types.ObjectId.isValid(id)) {
     throw new Error('Invalid staff ID format');

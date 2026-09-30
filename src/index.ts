@@ -15,12 +15,26 @@ import domainRoutes from './routes/domainRoutes';
 import subscriptionRoutes from './routes/subscriptionRoutes';
 import billingRoutes from './routes/billingRoutes';
 import userRoutes from './routes/userRoutes';
+import { openApiSpec } from './docs/openapi';
+import { swaggerUiHtml } from './docs/swagger';
 
 dotenv.config();
 
 const app = express();
 app.use('/api/billing/xendit/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
 app.use(express.json());
+
+app.get('/api-docs/openapi.json', (_req, res) => {
+  res.json(openApiSpec);
+});
+
+app.get('/api-docs', (_req, res) => {
+  res.type('html').send(swaggerUiHtml());
+});
+
+app.get('/api-docs/', (_req, res) => {
+  res.type('html').send(swaggerUiHtml());
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

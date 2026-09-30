@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import Branch from '../models/Branch';
 import User, { ModulePermissionName, PermissionPreset, UserRole, VALID_MODULES, VALID_ROLES } from '../models/User';
 import { applyRolePreset } from '../utils/rolePermissions';
+import { assertActiveUserCapacity } from './organizationSeatService';
 
 const validPresets: PermissionPreset[] = ['OWNER', 'MANAGER', 'CASHIER'];
 
@@ -79,6 +80,7 @@ export const createOrganizationUser = async (orgId: Types.ObjectId, data: any) =
   const branchAccess = await validateBranchAccess(data.branchAccess === undefined ? (role === 'OWNER' ? 'ALL' : []) : data.branchAccess, orgId, role);
   const modulePermissions = data.modulePermissions === undefined ? undefined : validateModulePermissions(data.modulePermissions);
   const status = data.status === undefined ? 'ACTIVE' : validateStatus(data.status);
+  if (status === 'ACTIVE') await assertActiveUserCapacity(orgId);
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await User.create({
     organizationId: orgId,
@@ -119,6 +121,7 @@ export const updateOrganizationUser = async (orgId: Types.ObjectId, userId: stri
     user.email = data.email.trim().toLowerCase();
   }
   if (data.role !== undefined) user.role = role;
+  if (status === 'ACTIVE' && user.status !== 'ACTIVE') await assertActiveUserCapacity(orgId);
   if (data.status !== undefined) user.status = status;
   if (data.branchAccess !== undefined) user.branchAccess = await validateBranchAccess(data.branchAccess, orgId, role);
   else if (role !== 'OWNER' && user.branchAccess === 'ALL') throw new Error('Assign organization branch IDs before changing this user from OWNER');

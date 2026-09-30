@@ -2,7 +2,7 @@ export const openApiSpec = {
   openapi: '3.0.3',
   info: { title: 'DOYBIZ Backend API', version: '1.0.0', description: 'Multi-tenant business management API for organizations, branches, users, appointments, sales, reports, domains, subscriptions, and billing.' },
   servers: [{ url: '/api', description: 'Current server' }],
-  tags: ['Auth','Users','Branches','Customers','Staff','Services','Reservations','Public','Sales','Reports','Dashboard','Domains','Subscription','Billing'].map(name => ({ name })),
+  tags: ['Auth','Platform Admin','Users','Branches','Customers','Staff','Services','Reservations','Public','Sales','Reports','Dashboard','Domains','Subscription','Billing'].map(name => ({ name })),
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
     parameters: {
@@ -19,6 +19,18 @@ export const openApiSpec = {
   paths: {
     '/auth/register': { post: { tags:['Auth'], summary:'Register organization and owner', requestBody:{required:true,content:{'application/json':{schema:{type:'object',required:['orgName','slug','email','password','userName'],additionalProperties:true}}}}, responses:{'201':{description:'Registered'},'400':{description:'Validation error'}} } },
     '/auth/login': { post: { tags:['Auth'], summary:'Authenticate user', requestBody:{required:true,content:{'application/json':{schema:{type:'object',required:['email','password'],additionalProperties:true}}}}, responses:{'200':{description:'Authenticated'},'401':{description:'Invalid credentials'}} } },
+    '/platform/organizations': {
+      get: { tags:['Platform Admin'], summary:'List all organizations for the platform admin', security:[{bearerAuth:[]}], responses:{'200':{description:'Organizations'},'401':{description:'Authentication required'},'403':{description:'Platform admin access required'}} },
+      post: { tags:['Platform Admin'], summary:'Provision a new organization', security:[{bearerAuth:[]}], requestBody:{required:true,content:{'application/json':{schema:{type:'object',required:['name','email','phone','address'],additionalProperties:false}}}}, responses:{'201':{description:'Organization created'},'400':{description:'Validation error'},'403':{description:'Platform admin access required'}} },
+    },
+    '/platform/organizations/{organizationId}/branches': {
+      get: { tags:['Platform Admin'], summary:'List branches for an organization', security:[{bearerAuth:[]}], parameters:[{name:'organizationId',in:'path',required:true,schema:{type:'string'}}], responses:{'200':{description:'Branches'},'404':{description:'Organization not found'},'403':{description:'Platform admin access required'}} },
+      post: { tags:['Platform Admin'], summary:'Provision a branch for an organization', security:[{bearerAuth:[]}], parameters:[{name:'organizationId',in:'path',required:true,schema:{type:'string'}}], requestBody:{required:true,content:{'application/json':{schema:{type:'object',required:['name','address','contactNumber'],additionalProperties:false}}}}, responses:{'201':{description:'Branch created'},'400':{description:'Validation error'},'403':{description:'Platform admin access required'}} },
+    },
+    '/platform/organizations/{organizationId}/users': {
+      get: { tags:['Platform Admin'], summary:'List users for an organization', security:[{bearerAuth:[]}], parameters:[{name:'organizationId',in:'path',required:true,schema:{type:'string'}}], responses:{'200':{description:'Users'},'403':{description:'Platform admin access required'}} },
+      post: { tags:['Platform Admin'], summary:'Provision a user for an organization', security:[{bearerAuth:[]}], parameters:[{name:'organizationId',in:'path',required:true,schema:{type:'string'}}], requestBody:{required:true,content:{'application/json':{schema:{type:'object',required:['name','email','password','role','branchAccess','modulePermissions'],additionalProperties:true}}}}, responses:{'201':{description:'User created'},'400':{description:'Validation error'},'403':{description:'Platform admin access required'}} },
+    },
     '/users': { get:{tags:['Users'],summary:'List organization users',security:[{bearerAuth:[]}],responses:{'200':{description:'Users'}}}, post:{tags:['Users'],summary:'Create organization user',security:[{bearerAuth:[]}],responses:{'201':{description:'Created'}}} },
     '/users/{id}': { get:{tags:['Users'],summary:'Get organization user',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'User'}}}, patch:{tags:['Users'],summary:'Update organization user',security:[{bearerAuth:[]}],parameters:[{'$ref':'#/components/parameters/id'}],responses:{'200':{description:'Updated'}}} },
     '/branches': { get:{tags:['Branches'],summary:'List accessible branches',security:[{bearerAuth:[]}],responses:{'200':{description:'Branches'}}}, post:{tags:['Branches'],summary:'Create branch',security:[{bearerAuth:[]}],responses:{'201':{description:'Created'}}} },

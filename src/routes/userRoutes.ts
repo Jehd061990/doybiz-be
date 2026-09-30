@@ -5,6 +5,7 @@ import { authenticateUser, authorizeRole } from '../middlewares/auth';
 const router = Router();
 
 router.use(authenticateUser, authorizeRole(['OWNER']));
+router.get('/seat-summary', userController.seatSummary);
 router.get('/', userController.list);
 router.post('/', userController.create);
 router.get('/:id', userController.getById);

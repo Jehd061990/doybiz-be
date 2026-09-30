@@ -50,7 +50,10 @@ export const createService = async (data: any, organizationId: string, user: IUs
 export const getServices = async (organizationId: string, queryParams: any = {}, user: IUser) => {
   const { branchId, search, status, page = 1, limit = 10 } = queryParams;
   const query: any = { organizationId: new Types.ObjectId(organizationId) };
+  const andConditions: any[] = [];
 
+  // Keep branch scope separate from text search so search can never widen
+  // the result set beyond the user's permitted branches.
   if (branchId) {
     if (!Types.ObjectId.isValid(branchId)) {
       throw new Error('Invalid branch ID format');
@@ -58,11 +61,24 @@ export const getServices = async (organizationId: string, queryParams: any = {},
     if (!canAccessBranch(user, branchId)) {
       throw new Error('You do not have access to this branch');
     }
-    // Services can be specific to this branch or org-wide (branchId: null/undefined)
-    query.$or = [{ branchId: new Types.ObjectId(branchId) }, { branchId: { $exists: false } }, { branchId: null }];
+    andConditions.push({
+      $or: [
+        { branchId: new Types.ObjectId(branchId) },
+        { branchId: { $exists: false } },
+        { branchId: null },
+      ],
+    });
   } else if (user.role !== 'OWNER' && user.branchAccess !== 'ALL') {
-    const allowed = Array.isArray(user.branchAccess) ? user.branchAccess.map(b => new Types.ObjectId(b)) : [];
-    query.$or = [{ branchId: { $in: allowed } }, { branchId: { $exists: false } }, { branchId: null }];
+    const allowed = Array.isArray(user.branchAccess)
+      ? user.branchAccess.map(b => new Types.ObjectId(b))
+      : [];
+    andConditions.push({
+      $or: [
+        { branchId: { $in: allowed } },
+        { branchId: { $exists: false } },
+        { branchId: null },
+      ],
+    });
   }
 
   if (status) {
@@ -71,11 +87,16 @@ export const getServices = async (organizationId: string, queryParams: any = {},
 
   if (search) {
     const searchRegex = new RegExp(search, 'i');
-    query.$or = [
-      ...(query.$or || []),
-      { name: searchRegex },
-      { description: searchRegex },
-    ];
+    andConditions.push({
+      $or: [
+        { name: searchRegex },
+        { description: searchRegex },
+      ],
+    });
+  }
+
+  if (andConditions.length) {
+    query.$and = andConditions;
   }
 
   const pageNum = Math.max(1, parseInt(page, 10));
@@ -97,7 +118,6 @@ export const getServices = async (organizationId: string, queryParams: any = {},
     },
   };
 };
-
 export const getServiceById = async (id: string, organizationId: string, user: IUser) => {
   if (!Types.ObjectId.isValid(id)) {
     throw new Error('Invalid service ID format');

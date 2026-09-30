@@ -26,7 +26,8 @@ assert.ok(openApiSpec.info.title);
 assert.ok(openApiSpec.components.securitySchemes.bearerAuth);
 
 for (const path of requiredPaths) {
-  assert.ok(openApiSpec.paths[path], `Missing OpenAPI path: ${path}`);
+  const documentedPath = openApiSpec.paths[path as keyof typeof openApiSpec.paths];
+  assert.ok(documentedPath, `Missing OpenAPI path: ${path}`);
 }
 
 console.log(`Swagger/OpenAPI smoke test passed: ${requiredPaths.length} required route groups documented.`);

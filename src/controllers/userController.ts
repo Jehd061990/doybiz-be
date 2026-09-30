@@ -6,6 +6,14 @@ const handleError = (res: Response, error: unknown) => {
   res.status(message.includes('not found') ? 404 : 400).json({ success: false, message });
 };
 
+export const seatSummary = async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, seatSummary: await userService.getOrganizationSeatSummary(req.user!.organizationId) });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
 export const list = async (req: Request, res: Response) => {
   try {
     const users = await userService.listOrganizationUsers(req.user!.organizationId);

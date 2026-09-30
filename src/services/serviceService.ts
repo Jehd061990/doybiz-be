@@ -6,7 +6,6 @@ import { IUser } from '../models/User';
 import { deleteServiceImage, uploadServiceImage } from './cloudinaryService';
 
 const ALLOWED_UPDATE_FIELDS = new Set(['branchId', 'name', 'code', 'category', 'description', 'price', 'durationMinutes', 'status']);
-const IMAGE_SOURCES = new Set(['CLOUDINARY', 'EXTERNAL_URL', 'NONE']);
 const validateImageUrl = (value: unknown) => {
   if (typeof value !== 'string' || !value.trim()) throw new Error('Image URL is required when using an external image URL');
   let url: URL;
@@ -119,7 +118,10 @@ export const updateService = async (id: string, data: any, organizationId: strin
       oldPublicId = existing.imagePublicId;
     }
   }
-  const service = await Service.findOneAndUpdate({ _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) }, { $set: next }, { new: true, runValidators: true }).populate('branchId', 'name address');
+  const update: any = { $set: next };
+  if (requestedSource === 'EXTERNAL_URL') update.$unset = { imagePublicId: '' };
+  if (requestedSource === 'NONE') update.$unset = { imageUrl: '', imagePublicId: '' };
+  const service = await Service.findOneAndUpdate({ _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) }, update, { new: true, runValidators: true }).populate('branchId', 'name address');
   if (oldPublicId && oldPublicId !== service?.imagePublicId) { try { await deleteServiceImage(oldPublicId); } catch (error) { console.error('Failed to delete old service image', error); } }
   return service;
 };

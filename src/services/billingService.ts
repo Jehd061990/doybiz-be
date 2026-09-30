@@ -3,10 +3,11 @@ import BillingCounter from '../models/BillingCounter';
 import BillingPayment, { BillingPaymentMethod } from '../models/BillingPayment';
 import BillingRecord from '../models/BillingRecord';
 import Branch from '../models/Branch';
-import OrganizationSubscription, { PAYMENT_TERM_MONTHS, PaymentTermMonths, SubscriptionStatus } from '../models/OrganizationSubscription';
+import Organization, { PAYMENT_TERM_MONTHS, PaymentTermMonths, SubscriptionStatus } from '../models/OrganizationSubscription';
 import SubscriptionPlan from '../models/SubscriptionPlan';
 import User, { IUser } from '../models/User';
 import { XenditService } from './xenditService';
+import { getProvisioning } from './organizationSeatService';
 
 const STANDARD_PLAN = {
   name: 'DoyBiz Standard',
@@ -90,7 +91,10 @@ export const calculateEstimate = async (user: IUser, period?: BillingPeriod) => 
   if (!plan) throw new Error('Active subscription plan is unavailable');
 
   const activeOrganizationUsers = users.length;
-  const includedUserSeats = branches.length * plan.includedUsersPerBranch;
+  const organization = await Organization.findById(organizationId(user)).select('includedBranchCount includedUserSeats additionalUserSeatsPerBranch');
+  if (!organization) throw new Error('Organization not found');
+  const provisioning = getProvisioning(organization);
+  const includedUserSeats = provisioning.includedUserSeats + Math.max(0, branches.length - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch;
   const additionalUserCount = Math.max(0, activeOrganizationUsers - includedUserSeats);
   const totalDays = period ? billingDays(period) : undefined;
   const chargeableUsers = [...users]
@@ -372,8 +376,13 @@ export const createMidTermAdjustment = async (user: IUser, data: any = {}) => {
     billingActivationPending: { $ne: true },
     _id: { $nin: requestedUserIds },
   });
-  const existingAdditionalUsers = Math.max(0, activeUsersBefore - activeBranches.length * plan.includedUsersPerBranch);
-  const projectedAdditionalUsers = Math.max(0, activeUsersBefore + users.length - projectedBranchCount * plan.includedUsersPerBranch);
+  const organization = await Organization.findById(orgId).select('includedBranchCount includedUserSeats additionalUserSeatsPerBranch');
+  if (!organization) throw new Error('Organization not found');
+  const provisioning = getProvisioning(organization);
+  const includedSeatsBefore = provisioning.includedUserSeats + Math.max(0, activeBranches.length - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch;
+  const includedSeatsAfter = provisioning.includedUserSeats + Math.max(0, projectedBranchCount - provisioning.includedBranchCount) * provisioning.additionalUserSeatsPerBranch;
+  const existingAdditionalUsers = Math.max(0, activeUsersBefore - includedSeatsBefore);
+  const projectedAdditionalUsers = Math.max(0, activeUsersBefore + users.length - includedSeatsAfter);
   const chargeableUserCount = Math.max(0, projectedAdditionalUsers - existingAdditionalUsers);
   const chargeableUsers = [...users]
     .sort((left, right) => billingEffectiveDate(left).getTime() - billingEffectiveDate(right).getTime())

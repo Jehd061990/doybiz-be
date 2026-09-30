@@ -7,26 +7,48 @@ declare global {
   namespace Express {
     interface Request {
       user?: IUser;
+      platformAdmin?: { email: string; role: 'PLATFORM_ADMIN' };
     }
   }
 }
 
-export const authenticateUser = async (req: Request, res: Response, next: NextFunction) => {
+const getBearerToken = (req: Request) => {
   const authHeader = req.header('Authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
+  return authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
+};
+
+export const authenticateUser = async (req: Request, res: Response, next: NextFunction) => {
+  const token = getBearerToken(req);
+  if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId: string };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId?: string; scope?: string };
+    if (decoded.scope === 'PLATFORM_ADMIN' || !decoded.userId) {
+      return res.status(401).json({ success: false, message: 'Organization authentication required' });
+    }
     const user = await User.findById(decoded.userId);
     if (!user || user.status !== 'ACTIVE') {
       return res.status(401).json({ success: false, message: 'Invalid or inactive user' });
     }
     req.user = user;
     next();
-  } catch (err) {
+  } catch {
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+};
+
+export const authenticatePlatformAdmin = (req: Request, res: Response, next: NextFunction) => {
+  const token = getBearerToken(req);
+  if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { scope?: string; role?: string; email?: string };
+    if (decoded.scope !== 'PLATFORM_ADMIN' || decoded.role !== 'PLATFORM_ADMIN' || !decoded.email) {
+      return res.status(403).json({ success: false, message: 'Platform admin access required' });
+    }
+    req.platformAdmin = { email: decoded.email, role: 'PLATFORM_ADMIN' };
+    next();
+  } catch {
     return res.status(401).json({ success: false, message: 'Invalid token' });
   }
 };
@@ -46,7 +68,7 @@ export const authorizeModule = (moduleName: string | string[]) => {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
     const modules = Array.isArray(moduleName) ? moduleName : [moduleName];
-    const isAllowed = modules.some(item => canAccessModule(req.user, item));
+    const isAllowed = modules.some(item => canAccessModule(req.user!, item));
     if (!isAllowed) {
       return res.status(403).json({ success: false, message: 'Module access denied' });
     }

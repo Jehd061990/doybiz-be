@@ -11,6 +11,8 @@ export interface IOrganization extends Document {
   includedBranchCount?: number;
   includedUserSeats?: number;
   additionalUserSeatsPerBranch?: number;
+  /** Additional user seats explicitly provisioned by Super Admin. */
+  additionalUserSeats?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,6 +27,7 @@ const OrganizationSchema: Schema = new Schema({
   includedBranchCount: { type: Number, min: 0, default: 1 },
   includedUserSeats: { type: Number, min: 0, default: 3 },
   additionalUserSeatsPerBranch: { type: Number, min: 0, default: 3 },
+  additionalUserSeats: { type: Number, min: 0, default: 0 },
 }, { timestamps: true });
 
 export default mongoose.model<IOrganization>('Organization', OrganizationSchema);

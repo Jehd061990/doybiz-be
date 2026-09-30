@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import Branch from '../models/Branch';
 import User, { ModulePermissionName, PermissionPreset, UserRole, VALID_MODULES, VALID_ROLES } from '../models/User';
 import { applyRolePreset } from '../utils/rolePermissions';
-import { assertActiveUserCapacity } from './organizationSeatService';
+import { assertActiveUserCapacity, getActiveSeatSummary } from './organizationSeatService';
 
 const validPresets: PermissionPreset[] = ['OWNER', 'MANAGER', 'CASHIER'];
 
@@ -57,6 +57,8 @@ const safeUser = (user: any) => {
   delete result.passwordHash;
   return result;
 };
+
+export const getOrganizationSeatSummary = async (orgId: Types.ObjectId) => getActiveSeatSummary(orgId);
 
 export const listOrganizationUsers = async (orgId: Types.ObjectId) => {
   const users = await User.find({ organizationId: orgId }).sort({ createdAt: 1 });

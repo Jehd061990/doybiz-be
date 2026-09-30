@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
+import platformAdminRoutes from './routes/platformAdminRoutes';
 import branchRoutes from './routes/branchRoutes';
 import customerRoutes from './routes/customerRoutes';
 import staffRoutes from './routes/staffRoutes';
@@ -37,6 +38,7 @@ app.get('/api-docs/', (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/platform', platformAdminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/customers', customerRoutes);
@@ -51,7 +53,6 @@ app.use('/api/domains', domainRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/billing', billingRoutes);
 
-// Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);
   res.status(500).json({ success: false, message: err.message || 'Internal Server Error' });

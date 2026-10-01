@@ -54,8 +54,8 @@ export const getServices = async (organization: IOrganization, branchId?: string
   } else {
     query.$or = [{ branchId: null }, { branchId: { $exists: false } }, { branchId: { $in: (await Branch.find({ organizationId: organization._id, status: 'ACTIVE' }).distinct('_id')) } }];
   }
-  const services = await Service.find(query).select('_id name description price durationMinutes branchId').sort({ name: 1 });
-  return services.map(service => ({ id: service._id, name: service.name, description: service.description, price: service.price, durationMinutes: service.durationMinutes, branchId: service.branchId || null }));
+  const services = await Service.find(query).select('_id name description price durationMinutes branchId imageUrl imageSource').sort({ name: 1 });
+  return services.map(service => ({ id: service._id, name: service.name, description: service.description, price: service.price, durationMinutes: service.durationMinutes, branchId: service.branchId || null, imageUrl: service.imageUrl || null, imageSource: service.imageSource || 'NONE' }));
 };
 
 export const getStaff = async (organization: IOrganization, branchId?: string, serviceId?: string) => {

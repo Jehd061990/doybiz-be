@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type WebsiteSectionKey = 'HERO' | 'SERVICES' | 'BRANCHES' | 'CONTACT';
+export type BookingCtaMode = 'modal' | 'page';
 
 export interface WebsiteConfigValue {
   branding: {
@@ -16,6 +17,11 @@ export interface WebsiteConfigValue {
     cardLabel: string;
     cardTitle: string;
     backgroundImageUrl: string;
+  };
+  bookingCta: {
+    enabled: boolean;
+    label: string;
+    mode: BookingCtaMode;
   };
   sections: {
     services: { enabled: boolean; eyebrow: string; title: string };
@@ -56,6 +62,11 @@ const valueSchema = new Schema({
     cardLabel: { type: String, default: 'ONLINE RESERVATIONS' },
     cardTitle: { type: String, default: 'Choose your service.\\nPick your schedule.' },
     backgroundImageUrl: { type: String, default: '' },
+  },
+  bookingCta: {
+    enabled: { type: Boolean, default: true },
+    label: { type: String, default: 'Book an appointment' },
+    mode: { type: String, enum: ['modal', 'page'], default: 'modal' },
   },
   sections: {
     services: { type: sectionSchema, default: () => ({}) },

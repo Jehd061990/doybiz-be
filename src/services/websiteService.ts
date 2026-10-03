@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import WebsiteConfig, { type WebsiteConfigValue } from '../models/WebsiteConfig';
+import WebsiteConfig, { DEFAULT_WEBSITE_SECTION_ORDER, type WebsiteConfigValue, type WebsiteSectionKey } from '../models/WebsiteConfig';
 import { IUser } from '../models/User';
 
 export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
@@ -17,6 +17,7 @@ export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
     cardTitle: 'Choose your service.\\nPick your schedule.',
     backgroundImageUrl: '',
   },
+  sectionOrder: [...DEFAULT_WEBSITE_SECTION_ORDER],
   bookingCta: {
     enabled: true,
     label: 'Book an appointment',
@@ -40,7 +41,15 @@ const normalizeColor = (value: unknown, fallback: string) =>
 const normalizeText = (value: unknown, fallback: string, max = 500) =>
   typeof value === 'string' ? value.trim().slice(0, max) : fallback;
 
+const normalizeSectionOrder = (value: unknown, base: WebsiteSectionKey[]): WebsiteSectionKey[] => {
+  if (!Array.isArray(value)) return [...base];
+  const allowed = new Set<WebsiteSectionKey>(DEFAULT_WEBSITE_SECTION_ORDER);
+  const ordered = value.filter((item): item is WebsiteSectionKey => typeof item === 'string' && allowed.has(item as WebsiteSectionKey));
+  return [...new Set(ordered), ...DEFAULT_WEBSITE_SECTION_ORDER.filter(item => !ordered.includes(item))];
+};
+
 const normalizeConfig = (input: any, base: WebsiteConfigValue): WebsiteConfigValue => ({
+  sectionOrder: normalizeSectionOrder(input?.sectionOrder, base.sectionOrder || DEFAULT_WEBSITE_SECTION_ORDER),
   branding: {
     primaryColor: normalizeColor(input?.branding?.primaryColor, base.branding.primaryColor),
     accentColor: normalizeColor(input?.branding?.accentColor, base.branding.accentColor),
@@ -93,6 +102,14 @@ export const getWebsiteConfig = async (user: IUser) => {
   // Backward-compatible migration for website configs created before newer CMS fields existed.
   const defaults = defaultWebsiteConfig();
   let changed = false;
+  if (!Array.isArray((config.draft as any)?.sectionOrder)) {
+    (config.draft as any).sectionOrder = [...DEFAULT_WEBSITE_SECTION_ORDER];
+    changed = true;
+  }
+  if (!Array.isArray((config.published as any)?.sectionOrder)) {
+    (config.published as any).sectionOrder = [...DEFAULT_WEBSITE_SECTION_ORDER];
+    changed = true;
+  }
   if (!config.draft?.bookingCta) {
     (config.draft as any).bookingCta = clone(defaults.bookingCta);
     changed = true;

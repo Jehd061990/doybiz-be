@@ -16,6 +16,7 @@ import domainRoutes from './routes/domainRoutes';
 import subscriptionRoutes from './routes/subscriptionRoutes';
 import billingRoutes from './routes/billingRoutes';
 import userRoutes from './routes/userRoutes';
+import websiteRoutes from './routes/websiteRoutes';
 import { openApiSpec } from './docs/openapi';
 import { swaggerUiHtml } from './docs/swagger';
 
@@ -52,6 +53,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/domains', domainRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/website', websiteRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);

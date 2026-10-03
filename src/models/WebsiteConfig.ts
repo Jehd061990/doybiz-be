@@ -5,7 +5,6 @@ export const DEFAULT_WEBSITE_SECTION_ORDER: WebsiteSectionKey[] = ['HERO', 'SERV
 export type BookingCtaMode = 'modal' | 'page';
 
 export interface WebsiteConfigValue {
-  sectionOrder: { type: [String], default: DEFAULT_WEBSITE_SECTION_ORDER },
   branding: {
     primaryColor: string;
     accentColor: string;
@@ -52,6 +51,7 @@ const sectionSchema = {
 };
 
 const valueSchema = new Schema({
+  sectionOrder: { type: [String], default: DEFAULT_WEBSITE_SECTION_ORDER },
   branding: {
     primaryColor: { type: String, default: '#111111' },
     accentColor: { type: String, default: '#c59d5f' },

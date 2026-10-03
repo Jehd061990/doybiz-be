@@ -73,7 +73,7 @@ async function runTests() {
   assert.equal(roleAllowed(['OWNER', 'MANAGER'], 'CASHIER').statusCode, 403);
   assert.equal(roleAllowed(['OWNER'], 'MANAGER').statusCode, 403);
   assert.deepEqual(ROLE_PRESETS.CASHIER, ['POS', 'SALES', 'APPOINTMENTS', 'CUSTOMERS']);
-  assert.deepEqual(ROLE_PRESETS.MANAGER, ['POS', 'SALES', 'APPOINTMENTS', 'CUSTOMERS', 'REPORTS', 'STAFF']);
+  assert.deepEqual(ROLE_PRESETS.MANAGER, ['POS', 'SALES', 'APPOINTMENTS', 'SERVICES', 'CUSTOMERS', 'REPORTS', 'STAFF']);
   assert.deepEqual(applyRolePreset('CASHIER'), ROLE_PRESETS.CASHIER);
   const restrictedUser = { role: 'CASHIER', branchAccess: [], modulePermissions: ['POS', 'SALES'] } as any;
   assert.equal(canAccessModule(restrictedUser, 'POS'), true);

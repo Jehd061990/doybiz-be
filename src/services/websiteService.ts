@@ -28,7 +28,7 @@ export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
 const normalizeColor = (value: unknown, fallback: string) =>
-  typeof value === 'string' && /^(#[0-9a-fA-F]{6}|rgb\\((?:[^)]*)\\)|rgba\\((?:[^)]*)\\))$/.test(value.trim())
+  typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim())
     ? value.trim()
     : fallback;
 

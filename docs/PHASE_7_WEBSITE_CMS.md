@@ -60,3 +60,11 @@ Also run `npm run build` before considering the phase complete.
 ## Future Scope
 
 Media storage/upload, SEO metadata, page/section ordering, multiple public pages, visual editing, theme/template systems, and domain DNS/ownership automation are future CMS phases.
+
+## Booking CTA
+
+- `enabled` controls whether booking CTA controls are shown on the public landing page.
+- `label` controls the visible CTA text.
+- `mode=modal` keeps the existing homepage booking modal flow.
+- `mode=page` sends the CTA to the dedicated `/site/book` booking page while preserving the existing booking implementation.
+- The dedicated booking page remains available independently for Facebook/ad traffic.

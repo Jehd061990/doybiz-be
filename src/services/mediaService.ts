@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { Types } from 'mongoose';
-import MediaAsset from '../models/MediaAsset';\nimport WebsiteConfig from '../models/WebsiteConfig';
+import MediaAsset from '../models/MediaAsset';
+import WebsiteConfig from '../models/WebsiteConfig';
 
 const UPLOAD_ROOT = path.resolve(process.env.MEDIA_UPLOAD_DIR || path.join(process.cwd(), 'uploads', 'media'));
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -49,6 +50,14 @@ export const deleteMediaAsset = async (organizationId: Types.ObjectId, id: strin
   if (!Types.ObjectId.isValid(id)) throw new Error('Invalid media asset ID');
   const asset = await MediaAsset.findOne({ _id: id, organizationId });
   if (!asset) throw new Error('Media asset not found');
+
+  const website = await WebsiteConfig.findOne({ organizationId });
+  if (
+    website?.draft?.hero?.backgroundImageUrl === asset.url ||
+    website?.published?.hero?.backgroundImageUrl === asset.url
+  ) {
+    throw new Error('This image is currently used by the draft or published hero and cannot be deleted');
+  }
 
   const absolutePath = path.join(UPLOAD_ROOT, organizationId.toString(), asset.filename);
   await fs.promises.rm(absolutePath, { force: true });

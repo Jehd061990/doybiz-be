@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export type UserRole = 'OWNER' | 'MANAGER' | 'CASHIER';
 export const VALID_ROLES: UserRole[] = ['OWNER', 'MANAGER', 'CASHIER'];
-export const VALID_MODULES = ['POS', 'SALES', 'APPOINTMENTS', 'SERVICES', 'CUSTOMERS', 'REPORTS', 'STAFF', 'BILLING'] as const;
+export const VALID_MODULES = ['POS', 'SALES', 'APPOINTMENTS', 'SERVICES', 'CUSTOMERS', 'REPORTS', 'STAFF', 'BILLING', 'WEBSITE'] as const;
 export type ModulePermissionName = typeof VALID_MODULES[number];
 export type PermissionPreset = 'OWNER' | 'MANAGER' | 'CASHIER';
 

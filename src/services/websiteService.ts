@@ -22,11 +22,6 @@ export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
     label: 'Book an appointment',
     mode: 'modal',
   },
-  bookingCta: {
-    enabled: input?.bookingCta?.enabled !== false,
-    label: normalizeText(input?.bookingCta?.label, base.bookingCta.label, 80),
-    mode: input?.bookingCta?.mode === 'page' ? 'page' : 'modal',
-  },
   sections: {
     services: { enabled: true, eyebrow: 'OUR SERVICES', title: 'Services & pricing' },
     branches: { enabled: true, eyebrow: 'LOCATIONS', title: 'Visit us' },
@@ -59,6 +54,11 @@ const normalizeConfig = (input: any, base: WebsiteConfigValue): WebsiteConfigVal
     cardLabel: normalizeText(input?.hero?.cardLabel, base.hero.cardLabel, 80),
     cardTitle: normalizeText(input?.hero?.cardTitle, base.hero.cardTitle, 160),
     backgroundImageUrl: normalizeText(input?.hero?.backgroundImageUrl, base.hero.backgroundImageUrl, 1000),
+  },
+  bookingCta: {
+    enabled: input?.bookingCta?.enabled !== false,
+    label: normalizeText(input?.bookingCta?.label, base.bookingCta.label, 80),
+    mode: input?.bookingCta?.mode === 'page' ? 'page' : 'modal',
   },
   sections: {
     services: {

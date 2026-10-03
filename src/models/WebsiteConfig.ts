@@ -1,9 +1,11 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type WebsiteSectionKey = 'HERO' | 'SERVICES' | 'BRANCHES' | 'CONTACT';
+export const DEFAULT_WEBSITE_SECTION_ORDER: WebsiteSectionKey[] = ['HERO', 'SERVICES', 'BRANCHES', 'CONTACT'];
 export type BookingCtaMode = 'modal' | 'page';
 
 export interface WebsiteConfigValue {
+  sectionOrder: { type: [String], default: DEFAULT_WEBSITE_SECTION_ORDER },
   branding: {
     primaryColor: string;
     accentColor: string;
@@ -18,6 +20,7 @@ export interface WebsiteConfigValue {
     cardTitle: string;
     backgroundImageUrl: string;
   };
+  sectionOrder: WebsiteSectionKey[];
   bookingCta: {
     enabled: boolean;
     label: string;

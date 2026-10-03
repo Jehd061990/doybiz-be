@@ -87,7 +87,22 @@ export const getWebsiteConfig = async (user: IUser) => {
   if (!config) {
     const defaults = defaultWebsiteConfig();
     config = await WebsiteConfig.create({ organizationId: user.organizationId, draft: defaults, published: defaults, publishedAt: new Date() });
+    return config;
   }
+
+  // Backward-compatible migration for website configs created before newer CMS fields existed.
+  const defaults = defaultWebsiteConfig();
+  let changed = false;
+  if (!config.draft?.bookingCta) {
+    (config.draft as any).bookingCta = clone(defaults.bookingCta);
+    changed = true;
+  }
+  if (!config.published?.bookingCta) {
+    (config.published as any).bookingCta = clone(defaults.bookingCta);
+    changed = true;
+  }
+  if (changed) await config.save();
+
   return config;
 };
 

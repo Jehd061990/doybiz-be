@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { Types } from 'mongoose';
-import MediaAsset from '../models/MediaAsset';
+import MediaAsset from '../models/MediaAsset';\nimport WebsiteConfig from '../models/WebsiteConfig';
 
 const UPLOAD_ROOT = path.resolve(process.env.MEDIA_UPLOAD_DIR || path.join(process.cwd(), 'uploads', 'media'));
 const MAX_FILE_SIZE = 5 * 1024 * 1024;

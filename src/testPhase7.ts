@@ -24,19 +24,29 @@ async function runTests() {
 
   const config = await websiteService.getWebsiteConfig(registered.user);
   assert.equal(config.draft.hero.title, 'Quality service, made easy to book.');
+  assert.equal(config.draft.bookingCta.enabled, true);
+  assert.equal(config.draft.bookingCta.label, 'Book an appointment');
+  assert.equal(config.draft.bookingCta.mode, 'modal');
   assert.equal(config.published.hero.title, config.draft.hero.title);
 
   const updated = await websiteService.updateWebsiteDraft({
     ...config.draft,
     branding: { ...config.draft.branding, primaryColor: '#123456' },
     hero: { ...config.draft.hero, title: 'Book your next salon visit.' },
+    bookingCta: { enabled: true, label: 'Reserve your time', mode: 'page' },
   }, registered.user);
   assert.equal(updated.draft.hero.title, 'Book your next salon visit.');
+  assert.equal(updated.draft.bookingCta.label, 'Reserve your time');
+  assert.equal(updated.draft.bookingCta.mode, 'page');
   assert.equal(updated.published.hero.title, 'Quality service, made easy to book.');
+  assert.equal(updated.published.bookingCta.mode, 'modal');
 
   const published = await websiteService.publishWebsite(registered.user);
   assert.equal(published.published.hero.title, 'Book your next salon visit.');
+  assert.equal(published.published.bookingCta.label, 'Reserve your time');
+  assert.equal(published.published.bookingCta.mode, 'page');
   assert.equal((await publicService.getSite(registered.org)).website.hero.title, 'Book your next salon visit.');
+  assert.equal((await publicService.getSite(registered.org)).website.bookingCta.mode, 'page');
 
   console.log('ALL PHASE 7 EMPIRICAL TESTS PASSED SUCCESSFULLY!');
   await WebsiteConfig.deleteMany({ organizationId: registered.org._id });

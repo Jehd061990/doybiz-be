@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import WebsiteConfig, { WebsiteConfigValue } from '../models/WebsiteConfig';
+import WebsiteConfig, { type WebsiteConfigValue } from '../models/WebsiteConfig';
 import { IUser } from '../models/User';
 
 export const defaultWebsiteConfig = (): WebsiteConfigValue => ({

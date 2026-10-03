@@ -29,7 +29,7 @@ export const saveImage = async (
   const absolutePath = path.join(organizationDir, filename);
   await fs.promises.writeFile(absolutePath, file.buffer);
 
-  const url = `/uploads/media/${organizationId.toString()}/${filename}`;
+  const url = `/api/media/${organizationId.toString()}/${filename}`;
   try {
     return await MediaAsset.create({
       organizationId,

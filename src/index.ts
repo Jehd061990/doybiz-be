@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
@@ -17,6 +18,7 @@ import subscriptionRoutes from './routes/subscriptionRoutes';
 import billingRoutes from './routes/billingRoutes';
 import userRoutes from './routes/userRoutes';
 import websiteRoutes from './routes/websiteRoutes';
+import mediaRoutes from './routes/mediaRoutes';
 import { openApiSpec } from './docs/openapi';
 import { swaggerUiHtml } from './docs/swagger';
 
@@ -54,6 +56,8 @@ app.use('/api/domains', domainRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/website', websiteRoutes);
+app.use('/uploads/media', express.static(path.resolve(process.env.MEDIA_UPLOAD_DIR || path.join(process.cwd(), 'uploads', 'media'))));
+app.use('/api/media', mediaRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);

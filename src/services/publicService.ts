@@ -6,6 +6,7 @@ import Reservation from '../models/Reservation';
 import Service from '../models/Service';
 import Staff from '../models/Staff';
 import StaffService from '../models/StaffService';
+import { getPublicWebsiteConfig } from './websiteService';
 import { formatMinutesToTime, isTimeOverlapping, isValidDateString, parseTimeToMinutes } from '../utils/timeHelper';
 
 const requireId = (value: unknown, field: string) => {
@@ -38,6 +39,7 @@ export const getSite = async (organization: IOrganization) => {
   return {
     organization: publicOrganization(organization),
     primaryDomain: primaryDomain?.domain || null,
+    website: await getPublicWebsiteConfig(organization._id),
   };
 };
 

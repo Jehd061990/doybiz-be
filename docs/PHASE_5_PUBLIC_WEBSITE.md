@@ -59,3 +59,27 @@ Public booking creates or finds a customer only inside the resolved organization
 ## Limitations
 
 Business hours, holidays, staff schedules, domain DNS/ownership verification, rate limiting/CAPTCHA, email/SMS confirmation, and frontend website rendering are future work. Phase 1–4 APIs and models were preserved.
+
+## Website CMS Configuration (Phase 7 Foundation)
+
+The authenticated Website CMS is implemented as a separate tenant-scoped configuration layer:
+
+- `WebsiteConfig` stores one document per organization.
+- `draft` contains the editable configuration.
+- `published` contains the public configuration.
+- `GET /api/website` returns both versions for the authenticated organization.
+- `PUT /api/website` normalizes and saves the draft only.
+- `POST /api/website/publish` copies the draft to published and records `publishedAt`.
+- `GET /api/public/site` exposes only the published website configuration.
+
+Current configuration covers branding colors, hero content/image URL, Services/Branches/Contact section visibility and labels, and footer text. Website configuration never replaces operational DoyBiz data such as services, branches, staff, availability, or reservations.
+
+The authenticated Website routes require `authenticateUser` plus `authorizeModule('WEBSITE')`. Tenant isolation is derived from the authenticated user's organization; clients do not submit an organization ID to choose the target tenant.
+
+### CMS Testing
+
+`src/testPhase7.ts` empirically verifies default creation, draft-only updates, publish promotion, and public-site consumption of the published configuration. It uses a test MongoDB database and must not be treated as a unit test.
+
+### Future CMS Scope
+
+Media uploads, media library, SEO metadata, section ordering, additional public pages, visual page editing, template/theme management, and domain ownership automation are not part of the current foundation.

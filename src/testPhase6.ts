@@ -394,7 +394,7 @@ async function runTests() {
   const halfwayEstimate = await billingService.calculateEstimate(first.user, billingPeriod);
   const halfwayDetails = halfwayEstimate.additionalUserDetails;
   assert.equal(halfwayDetails.length, 2);
-  assert.ok(Math.abs(halfwayDetails[1].proratedAmount - 100) <= 1);
+  assert.equal(halfwayDetails[1].daysCharged, Math.ceil((billingPeriod.end.getTime() - halfwayDate.getTime()) / (24 * 60 * 60 * 1000)));\n  assert.ok(Math.abs(halfwayDetails[1].proratedAmount - (200 * halfwayDetails[1].daysCharged / halfwayDetails[1].totalBillingDays)) <= 0.01);
 
   extraUser.billingEffectiveAt = nearEndDate;
   extraUserTwo.billingEffectiveAt = nearEndDate;

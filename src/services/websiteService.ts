@@ -17,6 +17,16 @@ export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
     cardTitle: 'Choose your service.\\nPick your schedule.',
     backgroundImageUrl: '',
   },
+  bookingCta: {
+    enabled: true,
+    label: 'Book an appointment',
+    mode: 'modal',
+  },
+  bookingCta: {
+    enabled: input?.bookingCta?.enabled !== false,
+    label: normalizeText(input?.bookingCta?.label, base.bookingCta.label, 80),
+    mode: input?.bookingCta?.mode === 'page' ? 'page' : 'modal',
+  },
   sections: {
     services: { enabled: true, eyebrow: 'OUR SERVICES', title: 'Services & pricing' },
     branches: { enabled: true, eyebrow: 'LOCATIONS', title: 'Visit us' },

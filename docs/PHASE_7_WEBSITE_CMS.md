@@ -68,3 +68,11 @@ Media storage/upload, SEO metadata, page/section ordering, multiple public pages
 - `mode=modal` keeps the existing homepage booking modal flow.
 - `mode=page` sends the CTA to the dedicated `/site/book` booking page while preserving the existing booking implementation.
 - The dedicated booking page remains available independently for Facebook/ad traffic.
+
+## Navigation Brand Controls
+
+Website branding now persists:
+- `logoUrl`: optional uploaded or externally hosted logo image URL.
+- `brandDisplay`: `text`, `logo`, `both`, or `none`.
+
+The default remains `text`, so existing organizations continue showing their organization name in the navigation. The setting is shared by all landing page templates and does not change booking behavior.

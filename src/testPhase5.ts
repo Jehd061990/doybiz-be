@@ -64,6 +64,13 @@ async function runTests() {
       overlayIntensity: 'strong',
       showHeroBadge: true,
     },
+    minimalModern: {
+      heroAlignment: 'left',
+      navigationStyle: 'minimal',
+      sectionSpacing: 'airy',
+      heroImagePosition: 'right',
+      ctaStyle: 'solid',
+    },
   });
   assert.equal((site as any).organization.passwordHash, undefined);
   assert.equal((await publicService.getBranches(first.org)).length, 1);

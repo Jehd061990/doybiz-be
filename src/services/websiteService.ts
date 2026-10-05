@@ -1,8 +1,9 @@
 import { Types } from 'mongoose';
-import WebsiteConfig, { DEFAULT_WEBSITE_SECTION_ORDER, type WebsiteConfigValue, type WebsiteSectionKey } from '../models/WebsiteConfig';
+import WebsiteConfig, { DEFAULT_WEBSITE_SECTION_ORDER, DEFAULT_WEBSITE_TEMPLATE, type WebsiteConfigValue, type WebsiteSectionKey, type WebsiteTemplateKey } from '../models/WebsiteConfig';
 import { IUser } from '../models/User';
 
 export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
+  template: DEFAULT_WEBSITE_TEMPLATE,
   branding: {
     primaryColor: '#111111',
     accentColor: '#c59d5f',
@@ -41,6 +42,9 @@ const normalizeColor = (value: unknown, fallback: string) =>
 const normalizeText = (value: unknown, fallback: string, max = 500) =>
   typeof value === 'string' ? value.trim().slice(0, max) : fallback;
 
+const normalizeTemplate = (value: unknown, fallback: WebsiteTemplateKey): WebsiteTemplateKey =>
+  value === DEFAULT_WEBSITE_TEMPLATE ? DEFAULT_WEBSITE_TEMPLATE : fallback;
+
 const normalizeSectionOrder = (value: unknown, base: WebsiteSectionKey[]): WebsiteSectionKey[] => {
   if (!Array.isArray(value)) return [...base];
   const allowed = new Set<WebsiteSectionKey>(DEFAULT_WEBSITE_SECTION_ORDER);
@@ -49,6 +53,7 @@ const normalizeSectionOrder = (value: unknown, base: WebsiteSectionKey[]): Websi
 };
 
 const normalizeConfig = (input: any, base: WebsiteConfigValue): WebsiteConfigValue => ({
+  template: normalizeTemplate(input?.template, base.template || DEFAULT_WEBSITE_TEMPLATE),
   sectionOrder: normalizeSectionOrder(input?.sectionOrder, base.sectionOrder || DEFAULT_WEBSITE_SECTION_ORDER),
   branding: {
     primaryColor: normalizeColor(input?.branding?.primaryColor, base.branding.primaryColor),
@@ -102,6 +107,14 @@ export const getWebsiteConfig = async (user: IUser) => {
   // Backward-compatible migration for website configs created before newer CMS fields existed.
   const defaults = defaultWebsiteConfig();
   let changed = false;
+  if (!(config.draft as any)?.template) {
+    (config.draft as any).template = DEFAULT_WEBSITE_TEMPLATE;
+    changed = true;
+  }
+  if (!(config.published as any)?.template) {
+    (config.published as any).template = DEFAULT_WEBSITE_TEMPLATE;
+    changed = true;
+  }
   if (!Array.isArray((config.draft as any)?.sectionOrder)) {
     (config.draft as any).sectionOrder = [...DEFAULT_WEBSITE_SECTION_ORDER];
     changed = true;

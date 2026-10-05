@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
-export type WebsiteTemplateKey = 'CLASSIC' | 'MODERN_LUXURY';
+export type WebsiteTemplateKey = 'CLASSIC' | 'MODERN_LUXURY' | 'MINIMAL_MODERN';
 export const DEFAULT_WEBSITE_TEMPLATE: WebsiteTemplateKey = 'CLASSIC';
 export type WebsiteSectionKey = 'HERO' | 'SERVICES' | 'BRANCHES' | 'CONTACT';
 export const DEFAULT_WEBSITE_SECTION_ORDER: WebsiteSectionKey[] = ['HERO', 'SERVICES', 'BRANCHES', 'CONTACT'];
@@ -91,7 +91,7 @@ const sectionSchema = {
 };
 
 const valueSchema = new Schema({
-  template: { type: String, enum: ['CLASSIC', 'MODERN_LUXURY'], default: DEFAULT_WEBSITE_TEMPLATE },
+  template: { type: String, enum: ['CLASSIC', 'MODERN_LUXURY', 'MINIMAL_MODERN'], default: DEFAULT_WEBSITE_TEMPLATE },
   templateSettings: {
     classic: {
       heroAlignment: { type: String, enum: ['left', 'center'], default: 'left' },

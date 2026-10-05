@@ -1,6 +1,7 @@
 import assert from 'assert';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { getTestMongoUri } from './testDatabase';
 import { login, registerOrganization } from './services/authService';
 import * as billingService from './services/billingService';
 import { authorizeRole } from './middlewares/auth';
@@ -40,7 +41,7 @@ const captureResponse = async (handler: any, body: any) => {
 };
 
 async function runTests() {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test');
+  await mongoose.connect(getTestMongoUri());
   await BillingPayment.collection.dropIndexes();
   await Promise.all([
     BillingPayment.deleteMany({}), BillingRecord.deleteMany({}), OrganizationSubscription.deleteMany({}), BillingCounter.deleteMany({}),

@@ -13,6 +13,7 @@ import Customer from './models/Customer';
 import Service from './models/Service';
 import Staff from './models/Staff';
 import StaffService from './models/StaffService';
+import { getTestMongoUri } from './testDatabase';
 import Reservation from './models/Reservation';
 import Sale from './models/Sale';
 import Payment from './models/Payment';
@@ -22,7 +23,9 @@ import SaleCounter from './models/SaleCounter';
 dotenv.config();
 
 async function runTests() {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test');
+  const mongoUri = getTestMongoUri();
+  console.log('Connecting to isolated test database.');
+  await mongoose.connect(mongoUri);
   await Promise.all([
     Payment.deleteMany({}), SaleItem.deleteMany({}), Sale.deleteMany({}), SaleCounter.deleteMany({}), Reservation.deleteMany({}),
     StaffService.deleteMany({}), Staff.deleteMany({}), Service.deleteMany({}), Customer.deleteMany({}), Domain.deleteMany({}),

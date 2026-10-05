@@ -40,6 +40,13 @@ export const DEFAULT_WEBSITE_TEMPLATE_SETTINGS: WebsiteTemplateSettings = {
     overlayIntensity: 'strong',
     showHeroBadge: true,
   },
+  minimalModern: {
+    heroAlignment: 'left',
+    navigationStyle: 'minimal',
+    sectionSpacing: 'airy',
+    heroImagePosition: 'right',
+    ctaStyle: 'solid',
+  },
 };
 
 export interface WebsiteConfigValue {
@@ -107,6 +114,13 @@ const valueSchema = new Schema({
       imageTreatment: { type: String, enum: ['natural', 'cinematic'], default: 'natural' },
       overlayIntensity: { type: String, enum: ['soft', 'strong'], default: 'strong' },
       showHeroBadge: { type: Boolean, default: true },
+    },
+    minimalModern: {
+      heroAlignment: { type: String, enum: ['left', 'center'], default: 'left' },
+      navigationStyle: { type: String, enum: ['minimal', 'standard'], default: 'minimal' },
+      sectionSpacing: { type: String, enum: ['airy', 'compact'], default: 'airy' },
+      heroImagePosition: { type: String, enum: ['left', 'right'], default: 'right' },
+      ctaStyle: { type: String, enum: ['solid', 'outline'], default: 'solid' },
     },
   },
   sectionOrder: { type: [String], default: DEFAULT_WEBSITE_SECTION_ORDER },

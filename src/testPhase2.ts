@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { getTestMongoUri } from './testDatabase';
 import Organization from './models/Organization';
 import User from './models/User';
 import Branch from './models/Branch';
@@ -18,7 +19,7 @@ dotenv.config();
 
 async function runTests() {
   console.log('Starting Phase 2 Empirical Tests...');
-  const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test';
+  const MONGODB_URI = getTestMongoUri();
   await mongoose.connect(MONGODB_URI);
   console.log('Connected to MongoDB for testing');
 

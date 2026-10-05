@@ -57,6 +57,8 @@ export interface WebsiteConfigValue {
     accentColor: string;
     backgroundColor: string;
     textColor: string;
+    logoUrl: string;
+    brandDisplay: 'text' | 'logo' | 'both' | 'none';
   };
   hero: {
     eyebrow: string;
@@ -129,6 +131,8 @@ const valueSchema = new Schema({
     accentColor: { type: String, default: '#c59d5f' },
     backgroundColor: { type: String, default: '#f7f4ef' },
     textColor: { type: String, default: '#171717' },
+    logoUrl: { type: String, default: '' },
+    brandDisplay: { type: String, enum: ['text', 'logo', 'both', 'none'], default: 'text' },
   },
   hero: {
     eyebrow: { type: String, default: 'WELCOME' },

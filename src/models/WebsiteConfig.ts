@@ -1,10 +1,13 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
+export type WebsiteTemplateKey = 'CLASSIC';
+export const DEFAULT_WEBSITE_TEMPLATE: WebsiteTemplateKey = 'CLASSIC';
 export type WebsiteSectionKey = 'HERO' | 'SERVICES' | 'BRANCHES' | 'CONTACT';
 export const DEFAULT_WEBSITE_SECTION_ORDER: WebsiteSectionKey[] = ['HERO', 'SERVICES', 'BRANCHES', 'CONTACT'];
 export type BookingCtaMode = 'modal' | 'page';
 
 export interface WebsiteConfigValue {
+  template: WebsiteTemplateKey;
   branding: {
     primaryColor: string;
     accentColor: string;
@@ -51,6 +54,7 @@ const sectionSchema = {
 };
 
 const valueSchema = new Schema({
+  template: { type: String, enum: ['CLASSIC'], default: DEFAULT_WEBSITE_TEMPLATE },
   sectionOrder: { type: [String], default: DEFAULT_WEBSITE_SECTION_ORDER },
   branding: {
     primaryColor: { type: String, default: '#111111' },

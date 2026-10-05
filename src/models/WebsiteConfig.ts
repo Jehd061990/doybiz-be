@@ -25,6 +25,13 @@ export interface WebsiteTemplateSettings {
     overlayIntensity: 'soft' | 'strong';
     showHeroBadge: boolean;
   };
+  minimalModern: {
+    heroAlignment: 'left' | 'center';
+    navigationStyle: 'minimal' | 'standard';
+    sectionSpacing: 'airy' | 'compact';
+    heroImagePosition: 'left' | 'right';
+    ctaStyle: 'solid' | 'outline';
+  };
 }
 
 export const DEFAULT_WEBSITE_TEMPLATE_SETTINGS: WebsiteTemplateSettings = {

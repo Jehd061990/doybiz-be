@@ -5,6 +5,9 @@ export const DEFAULT_WEBSITE_TEMPLATE: WebsiteTemplateKey = 'CLASSIC';
 export type WebsiteSectionKey = 'HERO' | 'SERVICES' | 'BRANCHES' | 'CONTACT';
 export const DEFAULT_WEBSITE_SECTION_ORDER: WebsiteSectionKey[] = ['HERO', 'SERVICES', 'BRANCHES', 'CONTACT'];
 export type BookingCtaMode = 'modal' | 'page';
+export type WebsiteLogoShape = 'circle' | 'square' | 'heart' | 'star';
+export type WebsiteLogoSize = 'small' | 'medium' | 'large' | 'xlarge';
+export type WebsiteBrandLayout = 'horizontal' | 'vertical';
 
 export interface WebsiteTemplateSettings {
   classic: {
@@ -59,6 +62,9 @@ export interface WebsiteConfigValue {
     textColor: string;
     logoUrl: string;
     brandDisplay: 'text' | 'logo' | 'both' | 'none';
+    logoShape: WebsiteLogoShape;
+    logoSize: WebsiteLogoSize;
+    brandLayout: WebsiteBrandLayout;
   };
   hero: {
     eyebrow: string;
@@ -133,6 +139,9 @@ const valueSchema = new Schema({
     textColor: { type: String, default: '#171717' },
     logoUrl: { type: String, default: '' },
     brandDisplay: { type: String, enum: ['text', 'logo', 'both', 'none'], default: 'text' },
+    logoShape: { type: String, enum: ['circle', 'square', 'heart', 'star'], default: 'square' },
+    logoSize: { type: String, enum: ['small', 'medium', 'large', 'xlarge'], default: 'medium' },
+    brandLayout: { type: String, enum: ['horizontal', 'vertical'], default: 'horizontal' },
   },
   hero: {
     eyebrow: { type: String, default: 'WELCOME' },

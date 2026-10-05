@@ -43,7 +43,7 @@ const normalizeText = (value: unknown, fallback: string, max = 500) =>
   typeof value === 'string' ? value.trim().slice(0, max) : fallback;
 
 const normalizeTemplate = (value: unknown, fallback: WebsiteTemplateKey): WebsiteTemplateKey =>
-  value === DEFAULT_WEBSITE_TEMPLATE ? DEFAULT_WEBSITE_TEMPLATE : fallback;
+  value === 'CLASSIC' || value === 'MODERN_LUXURY' ? value : fallback;
 
 const normalizeSectionOrder = (value: unknown, base: WebsiteSectionKey[]): WebsiteSectionKey[] => {
   if (!Array.isArray(value)) return [...base];

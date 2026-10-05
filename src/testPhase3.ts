@@ -1,6 +1,7 @@
 import assert from 'assert';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { getTestMongoUri } from './testDatabase';
 import { registerOrganization } from './services/authService';
 import * as saleService from './services/saleService';
 import * as paymentService from './services/paymentService';

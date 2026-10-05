@@ -170,10 +170,15 @@ export const updateWebsiteDraft = async (data: any, user: IUser) => {
   const current = await getWebsiteConfig(user);
   const base = clone(current.draft || defaultWebsiteConfig());
   const normalizedDraft = normalizeConfig(data, base);
-  current.set('draft', normalizedDraft);
-  current.markModified('draft');
-  await current.save();
-  return current;
+  // Replace the complete draft through an explicit Mongo update. This avoids
+  // relying on Mongoose nested-subdocument change detection for templateSettings.
+  await WebsiteConfig.updateOne(
+    { _id: current._id, organizationId: user.organizationId },
+    { $set: { draft: normalizedDraft } },
+  );
+  const saved = await WebsiteConfig.findById(current._id);
+  if (!saved) throw new Error('Website configuration not found after saving draft.');
+  return saved;
 };
 
 export const publishWebsite = async (user: IUser) => {

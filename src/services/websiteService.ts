@@ -1,9 +1,10 @@
 import { Types } from 'mongoose';
-import WebsiteConfig, { DEFAULT_WEBSITE_SECTION_ORDER, DEFAULT_WEBSITE_TEMPLATE, type WebsiteConfigValue, type WebsiteSectionKey, type WebsiteTemplateKey } from '../models/WebsiteConfig';
+import WebsiteConfig, { DEFAULT_WEBSITE_SECTION_ORDER, DEFAULT_WEBSITE_TEMPLATE, DEFAULT_WEBSITE_TEMPLATE_SETTINGS, type WebsiteConfigValue, type WebsiteSectionKey, type WebsiteTemplateKey, type WebsiteTemplateSettings } from '../models/WebsiteConfig';
 import { IUser } from '../models/User';
 
 export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
   template: DEFAULT_WEBSITE_TEMPLATE,
+  templateSettings: JSON.parse(JSON.stringify(DEFAULT_WEBSITE_TEMPLATE_SETTINGS)),
   branding: {
     primaryColor: '#111111',
     accentColor: '#c59d5f',
@@ -15,7 +16,7 @@ export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
     title: 'Quality service, made easy to book.',
     description: 'Explore our services, choose a branch, and reserve your preferred schedule online.',
     cardLabel: 'ONLINE RESERVATIONS',
-    cardTitle: 'Choose your service.\\nPick your schedule.',
+    cardTitle: 'Choose your service.\nPick your schedule.',
     backgroundImageUrl: '',
   },
   sectionOrder: [...DEFAULT_WEBSITE_SECTION_ORDER],
@@ -45,6 +46,26 @@ const normalizeText = (value: unknown, fallback: string, max = 500) =>
 const normalizeTemplate = (value: unknown, fallback: WebsiteTemplateKey): WebsiteTemplateKey =>
   value === 'CLASSIC' || value === 'MODERN_LUXURY' ? value : fallback;
 
+const normalizeTemplateSettings = (input: any, base: WebsiteTemplateSettings): WebsiteTemplateSettings => ({
+  classic: {
+    heroAlignment: input?.classic?.heroAlignment === 'center' ? 'center' : base.classic.heroAlignment,
+    navigationStyle: input?.classic?.navigationStyle === 'minimal' ? 'minimal' : base.classic.navigationStyle,
+    sectionSpacing: input?.classic?.sectionSpacing === 'compact' ? 'compact' : base.classic.sectionSpacing,
+    heroImagePosition: input?.classic?.heroImagePosition === 'top' || input?.classic?.heroImagePosition === 'bottom'
+      ? input.classic.heroImagePosition
+      : base.classic.heroImagePosition,
+    ctaStyle: input?.classic?.ctaStyle === 'outline' ? 'outline' : base.classic.ctaStyle,
+  },
+  modernLuxury: {
+    heroComposition: input?.modernLuxury?.heroComposition === 'split' ? 'split' : base.modernLuxury.heroComposition,
+    navigationStyle: input?.modernLuxury?.navigationStyle === 'minimal' ? 'minimal' : base.modernLuxury.navigationStyle,
+    sectionSpacing: input?.modernLuxury?.sectionSpacing === 'compact' ? 'compact' : base.modernLuxury.sectionSpacing,
+    imageTreatment: input?.modernLuxury?.imageTreatment === 'cinematic' ? 'cinematic' : base.modernLuxury.imageTreatment,
+    overlayIntensity: input?.modernLuxury?.overlayIntensity === 'soft' ? 'soft' : base.modernLuxury.overlayIntensity,
+    showHeroBadge: input?.modernLuxury?.showHeroBadge !== false,
+  },
+});
+
 const normalizeSectionOrder = (value: unknown, base: WebsiteSectionKey[]): WebsiteSectionKey[] => {
   if (!Array.isArray(value)) return [...base];
   const allowed = new Set<WebsiteSectionKey>(DEFAULT_WEBSITE_SECTION_ORDER);
@@ -54,6 +75,7 @@ const normalizeSectionOrder = (value: unknown, base: WebsiteSectionKey[]): Websi
 
 const normalizeConfig = (input: any, base: WebsiteConfigValue): WebsiteConfigValue => ({
   template: normalizeTemplate(input?.template, base.template || DEFAULT_WEBSITE_TEMPLATE),
+  templateSettings: normalizeTemplateSettings(input?.templateSettings, base.templateSettings || DEFAULT_WEBSITE_TEMPLATE_SETTINGS),
   sectionOrder: normalizeSectionOrder(input?.sectionOrder, base.sectionOrder || DEFAULT_WEBSITE_SECTION_ORDER),
   branding: {
     primaryColor: normalizeColor(input?.branding?.primaryColor, base.branding.primaryColor),
@@ -113,6 +135,14 @@ export const getWebsiteConfig = async (user: IUser) => {
   }
   if (!(config.published as any)?.template) {
     (config.published as any).template = DEFAULT_WEBSITE_TEMPLATE;
+    changed = true;
+  }
+  if (!(config.draft as any)?.templateSettings) {
+    (config.draft as any).templateSettings = clone(defaults.templateSettings);
+    changed = true;
+  }
+  if (!(config.published as any)?.templateSettings) {
+    (config.published as any).templateSettings = clone(defaults.templateSettings);
     changed = true;
   }
   if (!Array.isArray((config.draft as any)?.sectionOrder)) {

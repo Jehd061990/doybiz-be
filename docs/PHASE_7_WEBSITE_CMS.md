@@ -76,3 +76,14 @@ Website branding now persists:
 - `brandDisplay`: `text`, `logo`, `both`, or `none`.
 
 The default remains `text`, so existing organizations continue showing their organization name in the navigation. The setting is shared by all landing page templates and does not change booking behavior.
+
+
+## Navigation Logo Frame Customization
+
+The WebsiteConfig branding contract now persists:
+
+- `logoShape`: `square | circle | heart | star`
+- `logoSize`: `small | medium | large | xlarge`
+- `brandLayout`: `horizontal | vertical`
+
+The backend normalizes invalid values to the current/default configuration and migrates older WebsiteConfig records that do not yet contain these fields. Defaults are square, medium, and horizontal so existing websites keep their prior navigation behavior.

@@ -10,6 +10,8 @@ export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
     accentColor: '#c59d5f',
     backgroundColor: '#f7f4ef',
     textColor: '#171717',
+    logoUrl: '',
+    brandDisplay: 'text',
   },
   hero: {
     eyebrow: 'WELCOME',
@@ -42,6 +44,9 @@ const normalizeColor = (value: unknown, fallback: string) =>
 
 const normalizeText = (value: unknown, fallback: string, max = 500) =>
   typeof value === 'string' ? value.trim().slice(0, max) : fallback;
+
+const normalizeBrandDisplay = (value: unknown, fallback: WebsiteConfigValue['branding']['brandDisplay']) =>
+  value === 'logo' || value === 'both' || value === 'none' || value === 'text' ? value : fallback;
 
 const normalizeTemplate = (value: unknown, fallback: WebsiteTemplateKey): WebsiteTemplateKey =>
   value === 'CLASSIC' || value === 'MODERN_LUXURY' || value === 'MINIMAL_MODERN' ? value : fallback;
@@ -89,6 +94,8 @@ const normalizeConfig = (input: any, base: WebsiteConfigValue): WebsiteConfigVal
     accentColor: normalizeColor(input?.branding?.accentColor, base.branding.accentColor),
     backgroundColor: normalizeColor(input?.branding?.backgroundColor, base.branding.backgroundColor),
     textColor: normalizeColor(input?.branding?.textColor, base.branding.textColor),
+    logoUrl: normalizeText(input?.branding?.logoUrl, base.branding.logoUrl, 1000),
+    brandDisplay: normalizeBrandDisplay(input?.branding?.brandDisplay, base.branding.brandDisplay),
   },
   hero: {
     eyebrow: normalizeText(input?.hero?.eyebrow, base.hero.eyebrow, 80),

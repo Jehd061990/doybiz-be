@@ -48,6 +48,23 @@ async function runTests() {
   const site = await publicService.getSite(first.org);
   assert.equal(site.organization.name, 'Public Salon');
   assert.equal((site as any).website.template, 'CLASSIC');
+  assert.deepEqual((site as any).website.templateSettings, {
+    classic: {
+      heroAlignment: 'left',
+      navigationStyle: 'standard',
+      sectionSpacing: 'comfortable',
+      heroImagePosition: 'center',
+      ctaStyle: 'solid',
+    },
+    modernLuxury: {
+      heroComposition: 'full-bleed',
+      navigationStyle: 'editorial',
+      sectionSpacing: 'airy',
+      imageTreatment: 'natural',
+      overlayIntensity: 'strong',
+      showHeroBadge: true,
+    },
+  });
   assert.equal((site as any).organization.passwordHash, undefined);
   assert.equal((await publicService.getBranches(first.org)).length, 1);
   assert.equal((await publicService.getServices(first.org, branch._id.toString())).length, 1);

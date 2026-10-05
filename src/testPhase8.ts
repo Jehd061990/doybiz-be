@@ -2,6 +2,7 @@ import assert from 'assert';
 import fs from 'fs';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { getTestMongoUri } from './testDatabase';
 import { registerOrganization } from './services/authService';
 import * as mediaService from './services/mediaService';
 import MediaAsset from './models/MediaAsset';
@@ -9,7 +10,7 @@ import MediaAsset from './models/MediaAsset';
 dotenv.config();
 
 async function runTests() {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test');
+  await mongoose.connect(getTestMongoUri());
   const suffix = Date.now();
   const registered = await registerOrganization({
     orgName: 'Media Library Salon',

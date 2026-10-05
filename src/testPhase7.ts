@@ -28,17 +28,23 @@ async function runTests() {
   assert.equal(config.draft.bookingCta.enabled, true);
   assert.equal(config.draft.bookingCta.label, 'Book an appointment');
   assert.equal(config.draft.bookingCta.mode, 'modal');
+  assert.equal(config.draft.branding.logoShape, 'square');
+  assert.equal(config.draft.branding.logoSize, 'medium');
+  assert.equal(config.draft.branding.brandLayout, 'horizontal');
   assert.equal(config.published.hero.title, config.draft.hero.title);
 
   const updated = await websiteService.updateWebsiteDraft({
     ...config.draft,
-    branding: { ...config.draft.branding, primaryColor: '#123456' },
+    branding: { ...config.draft.branding, primaryColor: '#123456', logoShape: 'heart', logoSize: 'large', brandLayout: 'vertical' },
     hero: { ...config.draft.hero, title: 'Book your next salon visit.' },
     bookingCta: { enabled: true, label: 'Reserve your time', mode: 'page' },
   }, registered.user);
   assert.equal(updated.draft.hero.title, 'Book your next salon visit.');
   assert.equal(updated.draft.bookingCta.label, 'Reserve your time');
   assert.equal(updated.draft.bookingCta.mode, 'page');
+  assert.equal(updated.draft.branding.logoShape, 'heart');
+  assert.equal(updated.draft.branding.logoSize, 'large');
+  assert.equal(updated.draft.branding.brandLayout, 'vertical');
   assert.equal(updated.published.hero.title, 'Quality service, made easy to book.');
   assert.equal(updated.published.bookingCta.mode, 'modal');
 

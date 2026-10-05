@@ -169,7 +169,9 @@ export const getWebsiteConfig = async (user: IUser) => {
 export const updateWebsiteDraft = async (data: any, user: IUser) => {
   const current = await getWebsiteConfig(user);
   const base = clone(current.draft || defaultWebsiteConfig());
-  current.draft = normalizeConfig(data, base) as any;
+  const normalizedDraft = normalizeConfig(data, base);
+  current.set('draft', normalizedDraft);
+  current.markModified('draft');
   await current.save();
   return current;
 };

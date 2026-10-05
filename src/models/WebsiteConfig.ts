@@ -6,8 +6,45 @@ export type WebsiteSectionKey = 'HERO' | 'SERVICES' | 'BRANCHES' | 'CONTACT';
 export const DEFAULT_WEBSITE_SECTION_ORDER: WebsiteSectionKey[] = ['HERO', 'SERVICES', 'BRANCHES', 'CONTACT'];
 export type BookingCtaMode = 'modal' | 'page';
 
+export interface WebsiteTemplateSettings {
+  classic: {
+    heroAlignment: 'left' | 'center';
+    navigationStyle: 'standard' | 'minimal';
+    sectionSpacing: 'comfortable' | 'compact';
+    heroImagePosition: 'center' | 'top' | 'bottom';
+    ctaStyle: 'solid' | 'outline';
+  };
+  modernLuxury: {
+    heroComposition: 'full-bleed' | 'split';
+    navigationStyle: 'editorial' | 'minimal';
+    sectionSpacing: 'airy' | 'compact';
+    imageTreatment: 'natural' | 'cinematic';
+    overlayIntensity: 'soft' | 'strong';
+    showHeroBadge: boolean;
+  };
+}
+
+export const DEFAULT_WEBSITE_TEMPLATE_SETTINGS: WebsiteTemplateSettings = {
+  classic: {
+    heroAlignment: 'left',
+    navigationStyle: 'standard',
+    sectionSpacing: 'comfortable',
+    heroImagePosition: 'center',
+    ctaStyle: 'solid',
+  },
+  modernLuxury: {
+    heroComposition: 'full-bleed',
+    navigationStyle: 'editorial',
+    sectionSpacing: 'airy',
+    imageTreatment: 'natural',
+    overlayIntensity: 'strong',
+    showHeroBadge: true,
+  },
+};
+
 export interface WebsiteConfigValue {
   template: WebsiteTemplateKey;
+  templateSettings: WebsiteTemplateSettings;
   branding: {
     primaryColor: string;
     accentColor: string;
@@ -55,6 +92,23 @@ const sectionSchema = {
 
 const valueSchema = new Schema({
   template: { type: String, enum: ['CLASSIC', 'MODERN_LUXURY'], default: DEFAULT_WEBSITE_TEMPLATE },
+  templateSettings: {
+    classic: {
+      heroAlignment: { type: String, enum: ['left', 'center'], default: 'left' },
+      navigationStyle: { type: String, enum: ['standard', 'minimal'], default: 'standard' },
+      sectionSpacing: { type: String, enum: ['comfortable', 'compact'], default: 'comfortable' },
+      heroImagePosition: { type: String, enum: ['center', 'top', 'bottom'], default: 'center' },
+      ctaStyle: { type: String, enum: ['solid', 'outline'], default: 'solid' },
+    },
+    modernLuxury: {
+      heroComposition: { type: String, enum: ['full-bleed', 'split'], default: 'full-bleed' },
+      navigationStyle: { type: String, enum: ['editorial', 'minimal'], default: 'editorial' },
+      sectionSpacing: { type: String, enum: ['airy', 'compact'], default: 'airy' },
+      imageTreatment: { type: String, enum: ['natural', 'cinematic'], default: 'natural' },
+      overlayIntensity: { type: String, enum: ['soft', 'strong'], default: 'strong' },
+      showHeroBadge: { type: Boolean, default: true },
+    },
+  },
   sectionOrder: { type: [String], default: DEFAULT_WEBSITE_SECTION_ORDER },
   branding: {
     primaryColor: { type: String, default: '#111111' },
@@ -67,7 +121,7 @@ const valueSchema = new Schema({
     title: { type: String, default: 'Quality service, made easy to book.' },
     description: { type: String, default: 'Explore our services, choose a branch, and reserve your preferred schedule online.' },
     cardLabel: { type: String, default: 'ONLINE RESERVATIONS' },
-    cardTitle: { type: String, default: 'Choose your service.\\nPick your schedule.' },
+    cardTitle: { type: String, default: 'Choose your service.\nPick your schedule.' },
     backgroundImageUrl: { type: String, default: '' },
   },
   bookingCta: {

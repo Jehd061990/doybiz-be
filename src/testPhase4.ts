@@ -1,6 +1,7 @@
 import assert from 'assert';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { getTestMongoUri } from './testDatabase';
 import { registerOrganization } from './services/authService';
 import * as reportService from './services/reportService';
 import * as saleService from './services/saleService';
@@ -22,7 +23,7 @@ dotenv.config();
 const today = () => reportService.resolveDateRange({}).startDate;
 
 async function runTests() {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test');
+  await mongoose.connect(getTestMongoUri());
   await Promise.all([
     Payment.deleteMany({}), SaleItem.deleteMany({}), Sale.deleteMany({}), SaleCounter.deleteMany({}),
     Reservation.deleteMany({}), Service.deleteMany({}), Customer.deleteMany({}), Branch.deleteMany({}),

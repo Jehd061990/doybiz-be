@@ -44,7 +44,7 @@ const normalizeText = (value: unknown, fallback: string, max = 500) =>
   typeof value === 'string' ? value.trim().slice(0, max) : fallback;
 
 const normalizeTemplate = (value: unknown, fallback: WebsiteTemplateKey): WebsiteTemplateKey =>
-  value === 'CLASSIC' || value === 'MODERN_LUXURY' ? value : fallback;
+  value === 'CLASSIC' || value === 'MODERN_LUXURY' || value === 'MINIMAL_MODERN' ? value : fallback;
 
 const normalizeTemplateSettings = (input: any, base: WebsiteTemplateSettings): WebsiteTemplateSettings => ({
   classic: {

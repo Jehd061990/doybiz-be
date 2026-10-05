@@ -12,6 +12,9 @@ export const defaultWebsiteConfig = (): WebsiteConfigValue => ({
     textColor: '#171717',
     logoUrl: '',
     brandDisplay: 'text',
+    logoShape: 'square',
+    logoSize: 'medium',
+    brandLayout: 'horizontal',
   },
   hero: {
     eyebrow: 'WELCOME',
@@ -47,6 +50,15 @@ const normalizeText = (value: unknown, fallback: string, max = 500) =>
 
 const normalizeBrandDisplay = (value: unknown, fallback: WebsiteConfigValue['branding']['brandDisplay']) =>
   value === 'logo' || value === 'both' || value === 'none' || value === 'text' ? value : fallback;
+
+const normalizeLogoShape = (value: unknown, fallback: WebsiteConfigValue['branding']['logoShape']) =>
+  value === 'circle' || value === 'square' || value === 'heart' || value === 'star' ? value : fallback;
+
+const normalizeLogoSize = (value: unknown, fallback: WebsiteConfigValue['branding']['logoSize']) =>
+  value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge' ? value : fallback;
+
+const normalizeBrandLayout = (value: unknown, fallback: WebsiteConfigValue['branding']['brandLayout']) =>
+  value === 'vertical' || value === 'horizontal' ? value : fallback;
 
 const normalizeTemplate = (value: unknown, fallback: WebsiteTemplateKey): WebsiteTemplateKey =>
   value === 'CLASSIC' || value === 'MODERN_LUXURY' || value === 'MINIMAL_MODERN' ? value : fallback;
@@ -96,6 +108,9 @@ const normalizeConfig = (input: any, base: WebsiteConfigValue): WebsiteConfigVal
     textColor: normalizeColor(input?.branding?.textColor, base.branding.textColor),
     logoUrl: normalizeText(input?.branding?.logoUrl, base.branding.logoUrl, 1000),
     brandDisplay: normalizeBrandDisplay(input?.branding?.brandDisplay, base.branding.brandDisplay),
+    logoShape: normalizeLogoShape(input?.branding?.logoShape, base.branding.logoShape),
+    logoSize: normalizeLogoSize(input?.branding?.logoSize, base.branding.logoSize),
+    brandLayout: normalizeBrandLayout(input?.branding?.brandLayout, base.branding.brandLayout),
   },
   hero: {
     eyebrow: normalizeText(input?.hero?.eyebrow, base.hero.eyebrow, 80),

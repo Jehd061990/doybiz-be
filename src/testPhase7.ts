@@ -1,6 +1,7 @@
 import assert from 'assert';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { getTestMongoUri } from './testDatabase';
 import { registerOrganization } from './services/authService';
 import * as websiteService from './services/websiteService';
 import * as publicService from './services/publicService';
@@ -9,7 +10,7 @@ import WebsiteConfig from './models/WebsiteConfig';
 dotenv.config();
 
 async function runTests() {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test');
+  await mongoose.connect(getTestMongoUri());
   await WebsiteConfig.deleteMany({});
   const suffix = Date.now();
   const registered = await registerOrganization({

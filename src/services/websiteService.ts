@@ -64,6 +64,13 @@ const normalizeTemplateSettings = (input: any, base: WebsiteTemplateSettings): W
     overlayIntensity: input?.modernLuxury?.overlayIntensity === 'soft' ? 'soft' : base.modernLuxury.overlayIntensity,
     showHeroBadge: input?.modernLuxury?.showHeroBadge !== false,
   },
+  minimalModern: {
+    heroAlignment: input?.minimalModern?.heroAlignment === 'center' ? 'center' : base.minimalModern.heroAlignment,
+    navigationStyle: input?.minimalModern?.navigationStyle === 'standard' ? 'standard' : base.minimalModern.navigationStyle,
+    sectionSpacing: input?.minimalModern?.sectionSpacing === 'compact' ? 'compact' : base.minimalModern.sectionSpacing,
+    heroImagePosition: input?.minimalModern?.heroImagePosition === 'left' ? 'left' : base.minimalModern.heroImagePosition,
+    ctaStyle: input?.minimalModern?.ctaStyle === 'outline' ? 'outline' : base.minimalModern.ctaStyle,
+  },
 });
 
 const normalizeSectionOrder = (value: unknown, base: WebsiteSectionKey[]): WebsiteSectionKey[] => {

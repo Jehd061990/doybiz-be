@@ -152,6 +152,14 @@ export const getWebsiteConfig = async (user: IUser) => {
     (config.published as any).templateSettings = clone(defaults.templateSettings);
     changed = true;
   }
+  if (!(config.draft as any)?.templateSettings?.minimalModern) {
+    (config.draft as any).templateSettings.minimalModern = clone(defaults.templateSettings.minimalModern);
+    changed = true;
+  }
+  if (!(config.published as any)?.templateSettings?.minimalModern) {
+    (config.published as any).templateSettings.minimalModern = clone(defaults.templateSettings.minimalModern);
+    changed = true;
+  }
   if (!Array.isArray((config.draft as any)?.sectionOrder)) {
     (config.draft as any).sectionOrder = [...DEFAULT_WEBSITE_SECTION_ORDER];
     changed = true;

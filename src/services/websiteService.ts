@@ -158,6 +158,21 @@ export const getWebsiteConfig = async (user: IUser) => {
   // Backward-compatible migration for website configs created before newer CMS fields existed.
   const defaults = defaultWebsiteConfig();
   let changed = false;
+  if (!(config.draft as any)?.branding) {
+    (config.draft as any).branding = clone(defaults.branding);
+    changed = true;
+  }
+  if (!(config.published as any)?.branding) {
+    (config.published as any).branding = clone(defaults.branding);
+    changed = true;
+  }
+  for (const target of [config.draft as any, config.published as any]) {
+    if (target?.branding) {
+      if (!target.branding.logoShape) { target.branding.logoShape = defaults.branding.logoShape; changed = true; }
+      if (!target.branding.logoSize) { target.branding.logoSize = defaults.branding.logoSize; changed = true; }
+      if (!target.branding.brandLayout) { target.branding.brandLayout = defaults.branding.brandLayout; changed = true; }
+    }
+  }
   if (!(config.draft as any)?.template) {
     (config.draft as any).template = DEFAULT_WEBSITE_TEMPLATE;
     changed = true;

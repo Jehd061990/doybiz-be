@@ -4,6 +4,20 @@ import crypto from 'crypto';
 const MAX_IMAGE_BYTES = 300 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+const CLOUDINARY_ENVIRONMENTS = new Set(['dev', 'staging', 'qa', 'prod']);
+
+const getCloudinaryEnvironment = () => {
+  const value = (process.env.DOYBIZ_ENV || 'dev').trim().toLowerCase();
+  if (!CLOUDINARY_ENVIRONMENTS.has(value)) {
+    throw new Error(
+      `Cloudinary is not configured: DOYBIZ_ENV must be one of dev, staging, qa, or prod (received "${value}")`,
+    );
+  }
+  return value;
+};
+
+const getCloudinaryRoot = () => `doybiz/${getCloudinaryEnvironment()}`;
+
 const requiredEnv = (name: string) => {
   const value = process.env[name];
   if (!value) throw new Error(`Cloudinary is not configured: missing ${name}`);
@@ -25,7 +39,7 @@ export const uploadServiceImage = async (dataUri: string, organizationId: string
   const cloudName = requiredEnv('CLOUDINARY_CLOUD_NAME');
   const apiKey = requiredEnv('CLOUDINARY_API_KEY');
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const folder = `doybiz/organizations/${organizationId}/services`;
+  const folder = `${getCloudinaryRoot()}/organizations/${organizationId}/services`;
   const publicId = `service-${serviceId}`;
   const params = {
     folder, public_id: publicId, timestamp, overwrite: 'true', invalidate: 'true',
@@ -69,7 +83,7 @@ export const uploadMediaImage = async (
   const cloudName = requiredEnv('CLOUDINARY_CLOUD_NAME');
   const apiKey = requiredEnv('CLOUDINARY_API_KEY');
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const folder = `doybiz/organizations/${organizationId}/media`;
+  const folder = `${getCloudinaryRoot()}/organizations/${organizationId}/media`;
   const params = {
     folder,
     public_id: publicId,

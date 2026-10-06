@@ -55,3 +55,78 @@ export const deleteServiceImage = async (publicId: string) => {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30000,
   });
 };
+
+
+export const uploadMediaImage = async (
+  buffer: Buffer,
+  mimeType: string,
+  organizationId: string,
+  publicId: string,
+) => {
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) throw new Error('Only JPEG, PNG, and WebP images are supported');
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024) throw new Error('Image must be 5 MB or smaller');
+
+  const cloudName = requiredEnv('CLOUDINARY_CLOUD_NAME');
+  const apiKey = requiredEnv('CLOUDINARY_API_KEY');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const folder = `doybiz/organizations/${organizationId}/media`;
+  const params = {
+    folder,
+    public_id: publicId,
+    timestamp,
+  };
+  const dataUri = `data:${mimeType};base64,${buffer.toString('base64')}`;
+  const signature = sign(params);
+  const body = new URLSearchParams({
+    file: dataUri,
+    ...params,
+    api_key: apiKey,
+    signature,
+  });
+
+  const response = await axios.post(
+    `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/image/upload`,
+    body.toString(),
+    {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 30000,
+    },
+  );
+
+  return {
+    publicId: String(response.data.public_id),
+    secureUrl: String(response.data.secure_url),
+  };
+};
+
+export const deleteMediaImage = async (publicId: string) => {
+  if (!publicId) return;
+  const cloudName = requiredEnv('CLOUDINARY_CLOUD_NAME');
+  const apiKey = requiredEnv('CLOUDINARY_API_KEY');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const params = {
+    public_id: publicId,
+    timestamp,
+    invalidate: 'true',
+  };
+  const signature = sign(params);
+  const body = new URLSearchParams({
+    ...params,
+    api_key: apiKey,
+    signature,
+  });
+
+  const response = await axios.post(
+    `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/image/destroy`,
+    body.toString(),
+    {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 30000,
+    },
+  );
+
+  const result = String(response.data?.result || '');
+  if (result && result !== 'ok' && result !== 'not found') {
+    throw new Error(`Cloudinary image deletion failed: ${result}`);
+  }
+};

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User, { IUser } from '../models/User';
 import { canAccessBranch, canAccessModule } from '../utils/branchAccess';
+import { getJwtSecret } from '../config/env';
 
 declare global {
   namespace Express {
@@ -22,7 +23,7 @@ export const authenticateUser = async (req: Request, res: Response, next: NextFu
   if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId?: string; scope?: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as { userId?: string; scope?: string };
     if (decoded.scope === 'PLATFORM_ADMIN' || !decoded.userId) {
       return res.status(401).json({ success: false, message: 'Organization authentication required' });
     }
@@ -42,7 +43,7 @@ export const authenticatePlatformAdmin = (req: Request, res: Response, next: Nex
   if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { scope?: string; role?: string; email?: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as { scope?: string; role?: string; email?: string };
     if (decoded.scope !== 'PLATFORM_ADMIN' || decoded.role !== 'PLATFORM_ADMIN' || !decoded.email) {
       return res.status(403).json({ success: false, message: 'Platform admin access required' });
     }

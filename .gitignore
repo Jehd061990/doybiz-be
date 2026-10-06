@@ -131,3 +131,6 @@ Desktop.ini
 *.swo
 *.bak
 *.orig
+
+# Runtime upload data must not be committed
+uploads/

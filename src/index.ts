@@ -21,8 +21,10 @@ import websiteRoutes from './routes/websiteRoutes';
 import mediaRoutes from './routes/mediaRoutes';
 import { openApiSpec } from './docs/openapi';
 import { swaggerUiHtml } from './docs/swagger';
+import { validateEnvironment } from './config/env';
 
 dotenv.config();
+validateEnvironment();
 
 const app = express();
 app.use('/api/billing/xendit/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
@@ -65,7 +67,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz';
+const MONGODB_URI = process.env.MONGODB_URI!;
 
 mongoose.connect(MONGODB_URI)
   .then(() => {

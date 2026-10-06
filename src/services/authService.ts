@@ -2,8 +2,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Organization from '../models/Organization';
 import User, { VALID_MODULES } from '../models/User';
+import { getJwtSecret } from '../config/env';
 
-const jwtSecret = () => process.env.JWT_SECRET || 'secret';
+const jwtSecret = getJwtSecret;
 
 export interface PlatformAdminIdentity {
   _id: 'platform-admin';

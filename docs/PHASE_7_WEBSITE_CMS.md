@@ -87,3 +87,20 @@ The WebsiteConfig branding contract now persists:
 - `brandLayout`: `horizontal | vertical`
 
 The backend normalizes invalid values to the current/default configuration and migrates older WebsiteConfig records that do not yet contain these fields. Defaults are square, medium, and horizontal so existing websites keep their prior navigation behavior.
+
+
+## Custom Navigation Brand Text
+
+WebsiteConfig branding now also persists `brandText` as an optional custom navigation label.
+
+- Blank or whitespace-only `brandText` is normalized to an empty string.
+- The frontend falls back to the organization name when `brandText` is empty.
+- Maximum stored custom brand text length is 120 characters.
+- Existing WebsiteConfig records without the field remain compatible through the existing branding normalization/defaults.
+- This setting affects navigation branding only; it does not change the organization name or booking behavior.
+
+Backend verification:
+```bash
+npm run build
+npm run test:phase5
+```

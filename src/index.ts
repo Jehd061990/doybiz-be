@@ -71,7 +71,8 @@ const MONGODB_URI = process.env.MONGODB_URI!;
 
 mongoose.connect(MONGODB_URI)
   .then(() => {
-    console.log('Connected to MongoDB');
+    const databaseName = mongoose.connection.db?.databaseName || 'unknown';
+    console.log(`Connected to MongoDB database: ${databaseName}`);
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch(err => {

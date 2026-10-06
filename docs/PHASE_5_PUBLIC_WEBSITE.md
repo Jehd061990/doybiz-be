@@ -36,17 +36,11 @@ Production public requests resolve in this order:
 2. DoyBiz-hosted subdomain such as `bellasalon.doybiz.com`, resolved through the organization slug.
 3. Explicit `?tenant=...` / `?org=...` only when the incoming host is listed in `DOYBIZ_PUBLIC_HOSTS`.
 
-The platform-host allowlist is intentional: arbitrary production hosts cannot select a tenant through a query parameter. This prevents a random host from impersonating a customer's public site.
+The platform-host allowlist is intentional: arbitrary production hosts cannot select a tenant through a query parameter. This prevents a random host from impersonating a customer's public site. Generated frontend preview hosts may also be approved through `DOYBIZ_PUBLIC_HOST_PATTERNS`, using a narrowly scoped prefix pattern such as `doybiz-fe-*.vercel.app`; broad provider-wide patterns should not be used.
 
 In non-production, `x-organization-slug`, `x-tenant-slug`, or `tenant`/`org` query identifiers remain available for local testing. `x-organization-id` is not accepted by the public resolver. Set `NODE_ENV=production` to disable development identifiers.
 
-For a Vercel production/preview deployment that needs `/site?tenant=...`, add the exact deployment host to `DOYBIZ_PUBLIC_HOSTS`. Example:
-
-```env
-DOYBIZ_PUBLIC_HOSTS=doybiz-fe-kz2h.vercel.app
-```
-
-For a stable DoyBiz platform domain, add that host instead. Customer custom domains do not need to be added to this variable; they resolve through ACTIVE `Domain` records.
+For a stable Vercel production deployment, add the exact frontend host to `DOYBIZ_PUBLIC_HOSTS`. For generated Vercel preview URLs, prefer a narrowly scoped `DOYBIZ_PUBLIC_HOST_PATTERNS` value such as `doybiz-fe-*.vercel.app` rather than adding each preview URL individually. Never use a broad `*.vercel.app` pattern. Customer custom domains do not need to be added to these variables; they resolve through ACTIVE `Domain` records.
 
 Tenant identity never comes from the public reservation body, Origin, or Referer.
 

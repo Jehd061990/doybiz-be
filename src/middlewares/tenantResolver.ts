@@ -16,13 +16,32 @@ const getConfiguredPublicHosts = () =>
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
 
-const isApprovedPlatformHost = (host: string) =>
-  getConfiguredPublicHosts().includes(host);
+const getConfiguredPublicHostPatterns = () =>
+  (process.env.DOYBIZ_PUBLIC_HOST_PATTERNS || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+const hostMatchesPattern = (host: string, pattern: string) => {
+  const wildcardIndex = pattern.indexOf('*');
+  if (wildcardIndex === -1) return host === pattern;
+  if (pattern.indexOf('*', wildcardIndex + 1) !== -1) return false;
+
+  const prefix = pattern.slice(0, wildcardIndex);
+  const suffix = pattern.slice(wildcardIndex + 1);
+  return host.startsWith(prefix) && host.endsWith(suffix) && host.length >= prefix.length + suffix.length;
+};
+
+const isApprovedPlatformHost = (host: string) => {
+  const exactHosts = getConfiguredPublicHosts();
+  const patterns = getConfiguredPublicHostPatterns();
+  return exactHosts.includes(host) || patterns.some((pattern) => hostMatchesPattern(host, pattern));
+};
 
 export const resolveTenant = async (req: Request, res: Response, next: NextFunction) => {
   const slug = req.header('x-organization-slug') || req.header('x-tenant-slug');
   const querySlug = req.query.tenant || req.query.org;
-  const host = (req.header('host') || '').split(':')[0].toLowerCase().replace(/.$/, '');
+  const host = (req.header('host') || '').split(':')[0].toLowerCase().replace(/\.$/, '');
   const isProduction = process.env.NODE_ENV === 'production';
   const allowDevelopmentIdentifier = !isProduction || process.env.ALLOW_TENANT_HEADERS === 'true';
   const allowPlatformQueryTenant = !isProduction || isApprovedPlatformHost(host);

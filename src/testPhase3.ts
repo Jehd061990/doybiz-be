@@ -19,7 +19,7 @@ import SaleCounter from './models/SaleCounter';
 dotenv.config();
 
 async function runTests() {
-  const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/doybiz_test';
+  const mongoUri = getTestMongoUri();
   await mongoose.connect(mongoUri);
   await Promise.all([
     Payment.deleteMany({}), SaleItem.deleteMany({}), Sale.deleteMany({}), SaleCounter.deleteMany({}),

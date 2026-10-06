@@ -50,8 +50,10 @@ async function runTests() {
 
   const originalNodeEnv = process.env.NODE_ENV;
   const originalPublicHosts = process.env.DOYBIZ_PUBLIC_HOSTS;
+  const originalPublicHostPatterns = process.env.DOYBIZ_PUBLIC_HOST_PATTERNS;
   process.env.NODE_ENV = 'production';
   process.env.DOYBIZ_PUBLIC_HOSTS = 'doybiz-fe-kz2h.vercel.app';
+  process.env.DOYBIZ_PUBLIC_HOST_PATTERNS = 'doybiz-fe-*.vercel.app';
 
   let platformResolvedOrganization: any;
   const platformRequest: any = {
@@ -64,6 +66,32 @@ async function runTests() {
     resolve();
   }));
   assert.equal(platformResolvedOrganization._id.toString(), first.org._id.toString());
+
+  let patternResolvedOrganization: any;
+  const patternRequest: any = {
+    headers: { host: 'doybiz-fe-preview-abc.vercel.app' },
+    query: { tenant: first.org.slug },
+    header(name: string) { return this.headers[name.toLowerCase()]; },
+  };
+  await new Promise<void>((resolve) => resolveTenant(patternRequest, {} as any, () => {
+    patternResolvedOrganization = patternRequest.organization;
+    resolve();
+  }));
+  assert.equal(patternResolvedOrganization._id.toString(), first.org._id.toString());
+
+  let rejectedPatternStatus: number | undefined;
+  const unrelatedVercelRequest: any = {
+    headers: { host: 'other-project-preview.vercel.app' },
+    query: { tenant: first.org.slug },
+    header(name: string) { return this.headers[name.toLowerCase()]; },
+  };
+  await new Promise<void>((resolve) => resolveTenant(unrelatedVercelRequest, {
+    status(code: number) {
+      rejectedPatternStatus = code;
+      return { json() { resolve(); } };
+    },
+  } as any, () => resolve()));
+  assert.equal(rejectedPatternStatus, 400);
 
   let rejectedStatus: number | undefined;
   let rejectedBody: any;
@@ -90,6 +118,8 @@ async function runTests() {
   else process.env.NODE_ENV = originalNodeEnv;
   if (originalPublicHosts === undefined) delete process.env.DOYBIZ_PUBLIC_HOSTS;
   else process.env.DOYBIZ_PUBLIC_HOSTS = originalPublicHosts;
+  if (originalPublicHostPatterns === undefined) delete process.env.DOYBIZ_PUBLIC_HOST_PATTERNS;
+  else process.env.DOYBIZ_PUBLIC_HOST_PATTERNS = originalPublicHostPatterns;
 
   const site = await publicService.getSite(first.org);
   assert.equal(site.organization.name, 'Public Salon');

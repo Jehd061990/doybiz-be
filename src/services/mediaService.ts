@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { Types } from 'mongoose';
 import MediaAsset from '../models/MediaAsset';
 import WebsiteConfig from '../models/WebsiteConfig';
+import { deleteMediaImage, uploadMediaImage } from './cloudinaryService';
 
 const UPLOAD_ROOT = path.resolve(process.env.MEDIA_UPLOAD_DIR || path.join(process.cwd(), 'uploads', 'media'));
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -23,25 +24,25 @@ export const saveImage = async (
   if (!ALLOWED_TYPES[file.mimetype]) throw new Error('Only JPG, PNG, and WebP images are supported');
   if (file.size > MAX_FILE_SIZE) throw new Error('Image must be 5 MB or smaller');
 
-  const organizationDir = path.join(UPLOAD_ROOT, organizationId.toString());
-  await fs.promises.mkdir(organizationDir, { recursive: true });
+  const publicId = `media-${crypto.randomUUID()}`;
+  const uploaded = await uploadMediaImage(
+    file.buffer,
+    file.mimetype,
+    organizationId.toString(),
+    publicId,
+  );
 
-  const filename = `${crypto.randomUUID()}${ALLOWED_TYPES[file.mimetype]}`;
-  const absolutePath = path.join(organizationDir, filename);
-  await fs.promises.writeFile(absolutePath, file.buffer);
-
-  const url = `/api/media/${organizationId.toString()}/${filename}`;
   try {
     return await MediaAsset.create({
       organizationId,
       originalName: path.basename(file.originalname).slice(0, 255),
-      filename,
+      filename: uploaded.publicId,
       mimeType: file.mimetype,
       size: file.size,
-      url,
+      url: uploaded.secureUrl,
     });
   } catch (error) {
-    await fs.promises.rm(absolutePath, { force: true });
+    await deleteMediaImage(uploaded.publicId).catch(() => undefined);
     throw error;
   }
 };
@@ -59,7 +60,13 @@ export const deleteMediaAsset = async (organizationId: Types.ObjectId, id: strin
     throw new Error('This image is currently used by the draft or published hero and cannot be deleted');
   }
 
-  const absolutePath = path.join(UPLOAD_ROOT, organizationId.toString(), asset.filename);
-  await fs.promises.rm(absolutePath, { force: true });
+  if (asset.url.startsWith('https://res.cloudinary.com/')) {
+    await deleteMediaImage(asset.filename);
+  } else {
+    // Backward compatibility for assets created before Cloudinary migration.
+    const absolutePath = path.join(UPLOAD_ROOT, organizationId.toString(), asset.filename);
+    await fs.promises.rm(absolutePath, { force: true });
+  }
+
   await asset.deleteOne();
 };

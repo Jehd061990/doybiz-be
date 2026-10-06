@@ -69,6 +69,7 @@ export interface WebsiteConfigValue {
     textColor: string;
     logoUrl: string;
     brandDisplay: 'text' | 'logo' | 'both' | 'none';
+    brandText: string;
     logoShape: WebsiteLogoShape;
     logoSize: WebsiteLogoSize;
     brandLayout: WebsiteBrandLayout;
@@ -145,6 +146,7 @@ const valueSchema = new Schema({
     backgroundColor: { type: String, default: '#f7f4ef' },
     textColor: { type: String, default: '#171717' },
     logoUrl: { type: String, default: '' },
+    brandText: { type: String, default: '' },
     brandDisplay: { type: String, enum: ['text', 'logo', 'both', 'none'], default: 'text' },
     logoShape: { type: String, enum: ['circle', 'square', 'heart', 'star'], default: 'square' },
     logoSize: { type: String, enum: ['small', 'medium', 'large', 'xlarge'], default: 'medium' },

@@ -48,6 +48,49 @@ async function runTests() {
   await new Promise<void>((resolve, reject) => resolveTenant(request, {} as any, () => { resolvedOrganization = request.organization; resolve(); }));
   assert.equal(resolvedOrganization._id.toString(), first.org._id.toString());
 
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalPublicHosts = process.env.DOYBIZ_PUBLIC_HOSTS;
+  process.env.NODE_ENV = 'production';
+  process.env.DOYBIZ_PUBLIC_HOSTS = 'doybiz-fe-kz2h.vercel.app';
+
+  let platformResolvedOrganization: any;
+  const platformRequest: any = {
+    headers: { host: 'doybiz-fe-kz2h.vercel.app' },
+    query: { tenant: first.org.slug },
+    header(name: string) { return this.headers[name.toLowerCase()]; },
+  };
+  await new Promise<void>((resolve) => resolveTenant(platformRequest, {} as any, () => {
+    platformResolvedOrganization = platformRequest.organization;
+    resolve();
+  }));
+  assert.equal(platformResolvedOrganization._id.toString(), first.org._id.toString());
+
+  let rejectedStatus: number | undefined;
+  let rejectedBody: any;
+  const unapprovedRequest: any = {
+    headers: { host: 'untrusted-preview.example.com' },
+    query: { tenant: first.org.slug },
+    header(name: string) { return this.headers[name.toLowerCase()]; },
+  };
+  await new Promise<void>((resolve) => resolveTenant(unapprovedRequest, {
+    status(code: number) {
+      rejectedStatus = code;
+      return {
+        json(body: any) {
+          rejectedBody = body;
+          resolve();
+        },
+      };
+    },
+  } as any, () => resolve()));
+  assert.equal(rejectedStatus, 400);
+  assert.equal(rejectedBody.message, 'Invalid or missing public tenant domain.');
+
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
+  if (originalPublicHosts === undefined) delete process.env.DOYBIZ_PUBLIC_HOSTS;
+  else process.env.DOYBIZ_PUBLIC_HOSTS = originalPublicHosts;
+
   const site = await publicService.getSite(first.org);
   assert.equal(site.organization.name, 'Public Salon');
   assert.equal((site as any).website.template, 'CLASSIC');

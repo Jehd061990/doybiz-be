@@ -41,7 +41,8 @@ async function runTests() {
   assert.equal(asset.originalName, 'hero.png');
   assert.equal(asset.mimeType, 'image/png');
   assert.match(asset.url, /^https:\/\/res\.cloudinary\.com\//);
-  assert.match(asset.filename, /^doybiz\/organizations\/.+\/media\/media-/);
+  const cloudinaryEnvironment = (process.env.DOYBIZ_ENV || 'dev').trim().toLowerCase();
+  assert.match(asset.filename, new RegExp(`^doybiz/${cloudinaryEnvironment}/organizations/.+/media/media-`));
 
   const listed = await mediaService.getMediaAssets(registered.org._id);
   assert.equal(listed.length, 1);

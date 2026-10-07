@@ -148,7 +148,10 @@ async function runTests() {
     phone: '09887766554',
     email: 'jane@example.com',
   });
-  console.log('Test 10 Passed: Public website reservation created successfully for Jane Smith');
+  if (!publicResv.confirmationReference) throw new Error('Public reservation confirmation reference was not generated');
+  if (!/^[A-Z2-9]{6}$/.test(publicResv.confirmationReference)) throw new Error(`Invalid public confirmation reference format: ${publicResv.confirmationReference}`);
+  if (publicResv.confirmationReference === publicResv._id.toString()) throw new Error('Public confirmation reference must not expose the MongoDB reservation ID');
+  console.log('Test 10 Passed: Public website reservation created with 6-character confirmation reference:', publicResv.confirmationReference);
 
   console.log('ALL PHASE 2 EMPIRICAL TESTS PASSED SUCCESSFULLY!');
   await mongoose.connection.close();

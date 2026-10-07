@@ -5,6 +5,7 @@ import Service from '../models/Service';
 import Staff from '../models/Staff';
 import StaffService from '../models/StaffService';
 import { Types } from 'mongoose';
+import { randomBytes } from 'crypto';
 import { canAccessBranch } from '../utils/branchAccess';
 import { IUser } from '../models/User';
 import { parseTimeToMinutes, isTimeOverlapping, isValidDateString, normalizeTime } from '../utils/timeHelper';
@@ -110,6 +111,21 @@ export const createReservation = async (data: any, organizationId: string, user:
   return await reservation.populate(['customerId', 'branchId', 'serviceId', 'staffId']);
 };
 
+const CONFIRMATION_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+const generateConfirmationReference = async (): Promise<string> => {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const bytes = randomBytes(6);
+    let reference = '';
+    for (const byte of bytes) reference += CONFIRMATION_ALPHABET[byte % CONFIRMATION_ALPHABET.length];
+
+    const exists = await Reservation.exists({ confirmationReference: reference });
+    if (!exists) return reference;
+  }
+
+  throw new Error('Unable to generate a unique reservation confirmation reference');
+};
+
 export const createPublicReservation = async (data: any, organizationId: string, customerData: any) => {
   const orgObjId = new Types.ObjectId(organizationId);
 
@@ -138,7 +154,8 @@ export const createPublicReservation = async (data: any, organizationId: string,
   };
 
   const prepared = await validateAndPrepareReservation(reservationData, organizationId);
-  const reservation = await Reservation.create(prepared);
+  const confirmationReference = await generateConfirmationReference();
+  const reservation = await Reservation.create({ ...prepared, confirmationReference });
   return await reservation.populate(['customerId', 'branchId', 'serviceId', 'staffId']);
 };
 

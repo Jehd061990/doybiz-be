@@ -4,6 +4,7 @@ import { resolveTenant } from '../middlewares/tenantResolver';
 
 const router = Router();
 
+router.get('/debug-tenant', publicController.debugTenant);
 router.get('/site', resolveTenant, publicController.getSite);
 router.get('/branches', resolveTenant, publicController.getBranches);
 router.get('/services', resolveTenant, publicController.getServices);

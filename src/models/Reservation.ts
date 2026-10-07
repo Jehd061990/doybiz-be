@@ -5,6 +5,7 @@ export type ReservationSource = 'ADMIN' | 'STAFF' | 'WEBSITE';
 
 export interface IReservation extends Document {
   organizationId: Types.ObjectId;
+  confirmationReference?: string;
   branchId: Types.ObjectId;
   customerId: Types.ObjectId;
   serviceId: Types.ObjectId;
@@ -22,6 +23,7 @@ export interface IReservation extends Document {
 
 const ReservationSchema: Schema = new Schema({
   organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+  confirmationReference: { type: String, trim: true, uppercase: true, unique: true, sparse: true, index: true },
   branchId: { type: Schema.Types.ObjectId, ref: 'Branch', required: true, index: true },
   customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
   serviceId: { type: Schema.Types.ObjectId, ref: 'Service', required: true, index: true },

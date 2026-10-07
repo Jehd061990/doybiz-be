@@ -19,8 +19,7 @@ export const createPublicReservation = async (req: Request, res: Response) => {
     res.status(201).json({
       success: true,
       message: 'Reservation created successfully',
-      reservation,
-      data: reservation,
+      confirmationReference: reservation.confirmationReference,
     });
   } catch (error) {
     res.status(400).json({

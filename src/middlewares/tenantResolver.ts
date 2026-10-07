@@ -32,7 +32,7 @@ const hostMatchesPattern = (host: string, pattern: string) => {
   return host.startsWith(prefix) && host.endsWith(suffix) && host.length >= prefix.length + suffix.length;
 };
 
-const isApprovedPlatformHost = (host: string) => {
+export const isApprovedPlatformHost = (host: string) => {
   const exactHosts = getConfiguredPublicHosts();
   const patterns = getConfiguredPublicHostPatterns();
   return exactHosts.includes(host) || patterns.some((pattern) => hostMatchesPattern(host, pattern));
@@ -49,7 +49,6 @@ export const resolveTenant = async (req: Request, res: Response, next: NextFunct
   try {
     let org: IOrganization | null = null;
 
-    // Configured customer domains are authoritative and work in every environment.
     if (host) {
       const domainCandidates = host.startsWith('www.') ? [host, host.substring(4)] : [host];
       const configuredDomain = await Domain.findOne({
@@ -65,9 +64,6 @@ export const resolveTenant = async (req: Request, res: Response, next: NextFunct
       }
     }
 
-    // Local/development identifiers remain available for local testing.
-    // In production, query-string tenant resolution is allowed only on explicitly
-    // configured DoyBiz platform hosts, never on arbitrary customer domains.
     if (!org && allowDevelopmentIdentifier && slug) {
       org = await Organization.findOne({ slug: (slug as string).toLowerCase().trim() });
     } else if (!org && allowPlatformQueryTenant && querySlug) {
